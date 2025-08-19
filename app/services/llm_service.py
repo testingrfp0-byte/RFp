@@ -363,8 +363,7 @@ def query_vector_db(question: str, top_k=3):
 
 def build_company_background_prompt(company_context: list[str]) -> str:
     return f"""
-    Using the context below, write a polished 'Company Background & Capabilities' section 
-    for our RFP proposal. Emphasize credibility, industry expertise, and differentiators. Ensure the tone is professional and aligns with a consulting-focused proposal for media and marketing services.
+    You are Ringer's Assitant give the company details.
 
     Context:
     {chr(10).join(company_context)}

@@ -1,1 +1,70 @@
+
+
+# -----------------------------
+# Python
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+new_env/   # your venv
+
+# -----------------------------
+# Environment & Config
+# -----------------------------
 .env
+*.env
+.env.*
+secrets.json
+config.json
+
+# -----------------------------
+# Database
+# -----------------------------
+*.sqlite3
+*.db
+alembic/versions/*.pyc
+
+# Ignore local PostgreSQL dump files
+*.sql
+*.dump
+
+# -----------------------------
+# Logs & Temp files
+# -----------------------------
+*.log
+*.out
+*.tmp
+
+# -----------------------------
+# Build / Distribution
+# -----------------------------
+build/
+dist/
+*.egg-info/
+
+# -----------------------------
+# IDE & Editor settings
+# -----------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# -----------------------------
+# OS-specific
+# -----------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+__pycache__/
+__pycache__/*.pyc
+*/__pycache__/*.pyc
+uploads/
+generated_docs/
