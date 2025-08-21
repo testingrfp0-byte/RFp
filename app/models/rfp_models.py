@@ -1,14 +1,15 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey,Enum
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey,ForeignKeyConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.database import Base
 import enum
+from sqlalchemy.sql import expression 
 
 class RFPDocument(Base):
     __tablename__ = "rfp_documents"
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, nullable=False)
-    file_path = Column(String, nullable=True) #new for local update
+    file_path = Column(String, nullable=True)
     category = Column(String, nullable=True)
     extracted_text = Column(Text)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
@@ -54,6 +55,9 @@ class User(Base):
     password = Column(String, nullable=False) 
     email = Column(String,nullable=False)
     role =Column(String,nullable=False)
+    reset_otp = Column(String, nullable=True) 
+    otp_expiry = Column(DateTime, nullable=True)
+    image = Column(String, nullable=True)
     reviews = relationship("Reviewer", back_populates="user")
 
 
@@ -71,7 +75,16 @@ class Reviewer(Base):
     question_ref = relationship("RFPQuestion", back_populates="reviewers", foreign_keys=[ques_id])
     file_id = Column(Integer)
     admin_id = Column(Integer)    
- 
+
+    answer_versions = relationship(
+        "ReviewerAnswerVersion",
+        back_populates="reviewer",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
+
+
+
 class ReviewerAnswerVersion(Base):
     __tablename__ = "reviewer_answer_versions"
 
@@ -80,9 +93,28 @@ class ReviewerAnswerVersion(Base):
     ques_id = Column(Integer, ForeignKey("rfp_questions.id"))
     answer = Column(Text)
     generated_at = Column(DateTime, default=datetime.utcnow)
-
     user = relationship("User")
     question = relationship("RFPQuestion", back_populates="answer_versions")
+    reviewer = relationship(
+        "Reviewer",
+        back_populates="answer_versions",
+        primaryjoin="and_(ReviewerAnswerVersion.user_id == Reviewer.user_id, ReviewerAnswerVersion.ques_id == Reviewer.ques_id)"
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["user_id", "ques_id"],
+            ["reviewer.user_id", "reviewer.ques_id"],
+            ondelete="CASCADE"
+        ),
+    )
+
+
+
+
+
+
+
 
 
 

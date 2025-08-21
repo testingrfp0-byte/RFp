@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from pinecone import Pinecone
 from app.models.rfp_models import User
-
+import re
 
 
 
@@ -172,8 +172,6 @@ RFP Text:
     return response.choices[0].message.content.strip()
 
 
-
-
 def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str:
     """
     Combine RFP company description and web search snippets into a
@@ -230,7 +228,6 @@ Web Search Snippets:
     )
 
     return response.choices[0].message.content.strip()
-
 
 
 def extract_questions_with_llm(pdf_text: str) -> dict:
@@ -306,7 +303,6 @@ Group all extracted items **by the section heading or number** (like "1.1 Scope"
 
     return grouped_questions
 
-
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
@@ -346,9 +342,10 @@ def generate_answer_with_context(question: str, context: str) -> str:
     return response.choices[0].message.content.strip()
 
 
-
-
-def query_vector_db(question: str, top_k=3):
+def query_vector_db(question: str, top_k=8):
+    """
+    Query the vector database for relevant context.
+    """
     emb = client.embeddings.create(
         model="text-embedding-3-small",
         input=question
@@ -361,61 +358,120 @@ def query_vector_db(question: str, top_k=3):
     )
     return [match['metadata']['text'] for match in results['matches']]
 
+
+
 def build_company_background_prompt(company_context: list[str]) -> str:
+    """
+    Build a prompt to summarize all available Ringer details.
+    """
     return f"""
-    You are Ringer's Assitant give the company details.
+    You are Ringer's Senior Proposal Assistant. 
+    Summarize ALL available details about Ringer clearly, concisely, and professionally. 
+
+    Context includes past proposals, service offerings, methodologies, playbooks, 
+    case studies, pricing estimates, and SEO/social media support. 
+    Extract and include everything relevant to demonstrate Ringer’s full capabilities.
+
+    Also:
+    - Extract the client name (and email/contact if available) from the RFP context. 
+    - Present Ringer’s capabilities in a polished background section. 
+    - Emphasize consulting services, media planning, playbook development, 
+      social media strategy, SEO, analytics, reporting, and training. 
+    - Integrate relevant past work examples (from the context).
+    - Avoid repetition — make it narrative and professional.
 
     Context:
     {chr(10).join(company_context)}
+
+    Provide the final output as a professional "Company Background & Capabilities" 
+    section suitable for an RFP proposal.
     """
 
-def build_proposal_prompt(rfp_text: str, company_context: list[str]) -> str:
-    return f"""
-    You are a senior proposal writer preparing a professional response to an RFP. Base your writing on the RFP details below and our company background context. Do NOT include an Executive Summary section, as it will be provided separately.
 
-    RFP Extract:
+def build_proposal_prompt(rfp_text: str, company_context: str, case_studies: list[str] = None) -> str:
+    """
+    Build a structured proposal prompt to generate the proposal narrative.
+    Enriched with Ringer’s full service details.
+    """
+    case_study_text = "\n".join(case_studies) if case_studies else "No case studies provided."
+
+    return f"""
+    You are a senior proposal writer preparing a professional response to an RFP.
+    Use the provided RFP details, enriched Ringer background, and (if available) case studies. 
+    Do NOT include an Executive Summary (that will be added separately).
+
+    --- RFP Extract ---
     {rfp_text}
 
-    Company Knowledge Context:
-    {chr(10).join(company_context)}
+    --- Enriched Company Background (from vector DB) ---
+    {company_context}
 
-    Write a well-structured, persuasive proposal document with the following sections, modeled after a detailed and service-specific proposal style (e.g., clear service descriptions, cost estimates, and timeframes for each deliverable):
+    --- Case Studies (Optional) ---
+    {case_study_text}
+
+    Write a persuasive and structured proposal with the following sections:
 
     1. Strategic Approach
-       - Outline a methodology to meet the RFP objectives, integrating creative development, media strategy, audience research, and performance measurement.
-       - Emphasize targeting diverse audiences with cultural relevance and inclusivity.
-       - Highlight how the approach aligns with the client’s mission and goals.
+       - Summarize methodology for addressing the client’s objectives.
+       - Integrate creative development, media strategy, audience research, 
+         compliance considerations, SEO and social media best practices, 
+         and performance measurement.
+       - Highlight Ringer’s ability to co-create playbooks, provide discovery workshops, 
+         and deliver phased strategies aligned with client’s mission.
 
     2. Scope of Work
-       - Provide a detailed breakdown of deliverables aligned with the RFP requirements.
-       - Structure deliverables as distinct services (e.g., media planning, content creation, social media consulting, playbook development, SEO support) with clear descriptions.
-       - For each service, include:
-         - Specific tasks or activities (e.g., market research, campaign management, content audits).
-         - Expected outcomes (e.g., increased engagement, improved brand visibility).
-         - Compliance considerations, if applicable (e.g., state-level regulations for social media).
-       - Ensure deliverables are actionable and tailored to the client’s needs.
+       - Break down deliverables as service modules (e.g., media planning, 
+         content creation, social media playbook development, SEO support, 
+         training & workshops, consulting).
+       - For each deliverable include:
+         - Tasks/Activities
+         - Outcomes/Impact
+         - Compliance considerations (if applicable)
+       - Where possible, reference similar services Ringer has delivered 
+         in past projects (from context).
 
     3. Timeline
-       - Outline high-level phases (e.g., Discovery, Development, Launch, Optimization).
-       - Provide estimated durations for each phase (e.g., weeks or months).
-       - Include milestones for key deliverables (e.g., playbook completion, campaign launch).
+       - Organize into phases (Discovery, Development, Launch, Optimization).
+       - Provide estimated durations (weeks/months) + milestones.
+       - Include optional training/playbook delivery timelines.
 
     4. Budget & Investment
-       - Provide an estimated cost range for each service or deliverable, ensuring realism and transparency.
-       - Avoid exact figures; use ranges or qualitative descriptions (e.g., “$5,000–$10,000” or “investment based on scope”).
-       - Emphasize return on investment (ROI) and value for money, linking costs to expected outcomes.
+       - Provide estimated ranges (not exact).
+       - Map investments to services such as media planning, playbook development, 
+         SEO, social media consulting, analytics/reporting.
+       - Explain ROI/value for each service.
+       - Emphasize flexibility depending on scope.
 
     5. Why Us
-       - Highlight key reasons to choose our company, emphasizing expertise, past successes, and unique differentiators.
-       - Include 1–2 relevant case studies or success stories, if available, that align with the RFP’s goals.
-       - Demonstrate alignment with the client’s mission, values, and commitment to equity or community impact.
+       - Highlight Ringer’s strengths, past successes, and differentiators.
+       - Integrate provided case studies/examples where relevant.
+       - Emphasize proven expertise in:
+         • Local/Regional Media Planning
+         • Social Media Marketing (organic engagement, follower growth)
+         • SEO Playbook Development
+         • Training & Knowledge Transfer
+         • Analytics & Reporting
+       - Show how these capabilities align with the client’s mission.
 
     6. Next Steps
-       - Provide a clear call-to-action for moving forward (e.g., scheduling a meeting, discussing the proposal).
-       - Include placeholder contact information (e.g., [Your Company Email], [Your Company Phone Number]).
+       - Suggest clear actions (e.g., schedule a discovery session, alignment call).
+       - Include placeholders for contact info (to be filled by user).
 
-    Ensure the tone is professional, concise, and persuasive. Structure the response to resemble a service-focused proposal with itemized deliverables, cost estimates, and timeframes, similar to a consulting proposal for media planning, social media management, or playbook development. Avoid redundancy with any separately provided executive summary.
+    Notes:
+    - Tone: Professional, persuasive, and client-focused.
+    - Match the language/style of the client’s RFP where possible.
+    - Avoid redundancy with the Executive Summary.
+    - Always weave in Ringer’s enriched capabilities from vector DB, 
+      not just the RFP text.
+    -always give client a complete proposal
     """
+
+
+
+
+
+
+
 
 
 def analyze_answer_score_only(question_text: str, answer_text: str) -> float:
@@ -454,8 +510,6 @@ Answer: {answer_text}
         return float(score_text)
     except ValueError:
         return None
-
-import re
 
 def parse_rfp_summary(summary_text: str):
     """
@@ -498,3 +552,55 @@ def parse_rfp_summary(summary_text: str):
             "bullets": bullets
         }
     }
+
+def query_company_background(company_name: str, top_k=5):
+    """
+    Query the vector DB for company-specific background and capabilities.
+    """
+    question = f"Provide background, capabilities, and relevant details about {company_name}"
+    emb = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=question
+    ).data[0].embedding
+
+    results = index.query(
+        vector=emb,
+        top_k=top_k,
+        include_metadata=True,
+        filter={"company_name": company_name}  
+    )
+
+    return [match['metadata']['text'] for match in results['matches']]
+
+def summarize_company_background(company_name: str, context_chunks: list[str]) -> str:
+    """
+    Summarize retrieved chunks into a clean Company Background section.
+    """
+    joined_context = "\n".join(context_chunks)
+
+    prompt = f"""
+    You are a proposal assistant. Summarize the following context into a concise,
+    professional company background and capabilities section for {company_name}.
+    
+    Context:
+    {joined_context}
+
+    Provide a clear and polished summary in paragraph form.
+    """
+
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3
+    )
+    return resp.choices[0].message.content.strip()
+
+
+
+
+
+
+
+
+
+

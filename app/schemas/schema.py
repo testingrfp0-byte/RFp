@@ -110,11 +110,17 @@ class AdminEditRequest(BaseModel):
     question_id: int
     answer: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: str  
 
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
 
-
-
-
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str = Field(..., min_length=8)
 
 
 

@@ -1,4 +1,4 @@
-from fastapi import UploadFile,File,Depends,HTTPException,APIRouter,File
+from fastapi import UploadFile,File,Depends,HTTPException,APIRouter,File,Path
 from sqlalchemy.orm import Session
 from typing import List,Optional
 from fastapi import status
@@ -10,15 +10,15 @@ from pathlib import Path
 from app.db.database import get_db
 from sqlalchemy.orm import joinedload
 from app.schemas.schema import FileDetails,AssignReviewer,ReviewerOut,AdminEditRequest,RFPDocumentGroupedQuestionsOut,UserOut,NotificationRequest,GroupedRFPQuestionOut,QuestionOut
-from app.models.rfp_models import User,Reviewer,RFPDocument,RFPQuestion,CompanySummary
-from app.services.llm_service import extract_text_from_pdf,extract_company_background_from_rfp,extract_questions_with_llm,summarize_results_with_llm,generate_search_queries,search_with_serpapi,analyze_answer_score_only ,query_vector_db,client,parse_rfp_summary,build_company_background_prompt,build_proposal_prompt
+from app.models.rfp_models import User,Reviewer,RFPDocument,RFPQuestion,CompanySummary,ReviewerAnswerVersion
+from app.services.llm_service import extract_text_from_pdf,extract_company_background_from_rfp,extract_questions_with_llm,summarize_results_with_llm,generate_search_queries,search_with_serpapi,analyze_answer_score_only ,query_vector_db,client,parse_rfp_summary,build_company_background_prompt,build_proposal_prompt,query_company_background,summarize_company_background
 from app.api.routes.utils import get_current_user
 from docx import Document
 import os
 from fastapi import status,Form
 import hashlib
 from fastapi.responses import FileResponse
-
+from fastapi.staticfiles import StaticFiles
 
 
 router = APIRouter()
@@ -26,6 +26,7 @@ router = APIRouter()
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+router.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
 
 @router.post("/search-related-summary/")
 async def search_related_summary(
@@ -118,23 +119,6 @@ async def search_related_summary(
         "total_questions": questions_grouped
     }
 
-
-# @router.get("/filedetails", response_model=List[FileDetails])
-# def get_file_details(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-#     try:
-#         if current_user.role != "admin":
-#             raise HTTPException (status_code=status.HTTP_401_UNAUTHORIZED,
-#             detail="Only admins can access File details.")
-        
-#         documents = db.query(RFPDocument).all()
-#         if documents is None:
-#             return None
-#         return documents
-#     except Exception as e :
-#         print(e)
-#         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred")
-
-
 @router.get("/filedetails", response_model=List[FileDetails])
 def get_file_details(
     db: Session = Depends(get_db),
@@ -162,46 +146,6 @@ def get_file_details(
             detail="An unexpected error occurred"
         )
 
-
-
-# @router.post("/upload-library")
-# def upload_library(
-#     file: UploadFile = File(...),
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     try:
-#         if current_user.role != "admin":
-#             raise HTTPException(
-#                 status_code=status.HTTP_401_UNAUTHORIZED,
-#                 detail="Only admins can upload library documents."
-#             )
-#         file_ext = os.path.splitext(file.filename)[1]
-#         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-#         saved_filename = f"{timestamp}_{file.filename}"
-#         file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
-
-#         with open(file_path, "wb") as f:
-#             f.write(file.file.read())
-
-#         new_doc = RFPDocument(
-#             filename=file.filename,
-#             file_path=file_path,
-#             admin_id=current_user.id,
-#             uploaded_at=datetime.utcnow()
-#         )
-#         db.add(new_doc)
-#         db.commit()
-#         db.refresh(new_doc)
-
-#         return {"message": "File uploaded successfully", "document_id": new_doc.id}
-
-#     except Exception as e:
-#         print(f"Upload error: {e}")
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail="An unexpected error occurred"
-#         )
 
 @router.post("/upload-library")
 def upload_library(
@@ -265,6 +209,30 @@ def get_user(db: Session = Depends(get_db), current_user: User = Depends(get_cur
         )
         for user in users
     ]
+
+@router.get("/userdetails/{user_id}")
+def get_user_by_id(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Only admins can access User details."
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "user_id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "image_url": f"uploads/{user.image}" if user.image else None
+    }
 
 @router.get("/rfpdetails/{document_id}/{status}", response_model=RFPDocumentGroupedQuestionsOut)
 def get_rfp_details(
@@ -624,7 +592,14 @@ async def remove_user(
 
         user = db.query(User).filter(User.id == user_id).first()
         question = db.query(RFPQuestion).filter(RFPQuestion.id == ques_id).first()
-
+        
+        ans = db.query(ReviewerAnswerVersion).filter(
+            ReviewerAnswerVersion.ques_id == ques_id,
+            ReviewerAnswerVersion.user_id == user_id
+        ).first()
+        if ans:
+            db.delete(ans)
+            
         db.delete(assign)
         db.commit()
 
@@ -650,6 +625,7 @@ async def remove_user(
                 subtype=MessageType.plain
             )
         await fm.send_message(message)
+        
         return {"message": "Reviewer user removed and notified successfully."}
 
     except HTTPException as http_exc:
@@ -843,83 +819,6 @@ def view_rfp_document(rfp_id: int, db: Session = Depends(get_db), current_user: 
 
 GENERATED_FOLDER = "generated_docs"
 
-# @router.post("/generate-rfp-doc/")
-# async def generate_rfp_doc(rfp_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-#     if current_user.role != "admin":
-#         raise HTTPException(status_code=401, detail="Unauthorized")
-
-#     rfp_doc = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
-#     if not rfp_doc:
-#         raise HTTPException(status_code=404, detail="RFP not found")
-
-#     summary_obj = rfp_doc.summary
-#     if not summary_obj:
-#         raise HTTPException(status_code=404, detail="Executive summary not found")
-#     executive_summary = summary_obj.summary_text
-
-#     # 1. Get Ringer's Company Background from Pinecone
-#     company_context = query_vector_db("Ringer company background and capabilities", top_k=5)
-#     company_background_prompt = f"""
-#     Using the context below, write a professional 'Company Background' section for our RFP proposal.
-
-#     Context:
-#     {chr(10).join(company_context)}
-#     """
-#     bg_resp = client.chat.completions.create(
-#         model="gpt-4o-mini",
-#         messages=[{"role": "user", "content": company_background_prompt}],
-#         temperature=0.3
-#     )
-#     company_background = bg_resp.choices[0].message.content.strip()
-
-#     # 2. Generate Proposal Scope, Timeline, and Cost
-#     scope_prompt = f"""
-#     You are preparing a proposal based on the following RFP text:
-
-#     {rfp_doc.extracted_text}
-
-#     Context from our company's knowledge base:
-#     {chr(10).join(company_context)}
-
-#     Please create a concise, high-level proposal covering:
-#     - Project scope
-#     - Suggested approach
-#     - Estimated timeline
-#     - Estimated cost
-#     - Key differentiators
-
-#     Write in formal, persuasive proposal language.
-#     """
-#     scope_resp = client.chat.completions.create(
-#         model="gpt-4o-mini",
-#         messages=[{"role": "user", "content": scope_prompt}],
-#         temperature=0.4
-#     )
-#     proposal_scope = scope_resp.choices[0].message.content.strip()
-
-#     # 3. Create DOCX
-#     doc = Document()
-#     doc.add_heading("RFP Response", level=0)
-#     doc.add_paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
-
-#     doc.add_heading("Executive Summary", level=1)
-#     doc.add_paragraph(executive_summary)
-
-#     doc.add_heading("Company Background", level=1)
-#     doc.add_paragraph(company_background)
-
-#     doc.add_heading("Proposed Scope, Timeline & Cost", level=1)
-#     doc.add_paragraph(proposal_scope)
-
-#     os.makedirs(GENERATED_FOLDER, exist_ok=True)
-#     file_name = f"rfp_response_{rfp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.docx"
-#     file_path = os.path.join(GENERATED_FOLDER, file_name)
-#     doc.save(file_path)
-
-#     return {
-#         "message": "RFP proposal generated successfully",
-#         "download_url": f"/download/{file_name}"
-#     }
 
 @router.post("/generate-rfp-doc/")
 async def generate_rfp_doc(
@@ -929,8 +828,7 @@ async def generate_rfp_doc(
 ):
     if current_user.role.lower() != "admin":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-
-    # Fetch RFP document
+    
     rfp_doc = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
     if not rfp_doc:
         raise HTTPException(status_code=404, detail="RFP not found")
@@ -940,8 +838,13 @@ async def generate_rfp_doc(
         raise HTTPException(status_code=404, detail="Executive summary not found")
     executive_summary = summary_obj.summary_text
 
-    # 1. Get company background from vector DB
-    company_context = query_vector_db("Company background and capabilities", top_k=5)
+    company_name = getattr(rfp_doc, "client_name", "Ringer's")
+
+    # 1. Company Background
+    company_context = query_vector_db(
+        f"All details about Ringer (services, past proposals, playbooks, SEO, social media, training, case studies, pricing, methodology)", 
+        top_k=8
+    )
     bg_prompt = build_company_background_prompt(company_context)
 
     bg_resp = client.chat.completions.create(
@@ -951,33 +854,90 @@ async def generate_rfp_doc(
     )
     company_background = bg_resp.choices[0].message.content.strip()
 
-    # 2. Generate proposal content (excluding executive summary)
-    proposal_prompt = build_proposal_prompt(rfp_doc.extracted_text, company_context)
-    scope_resp = client.chat.completions.create(
+    # 2. Structured Proposal Narrative
+    rfp_text = getattr(rfp_doc, "full_text", executive_summary)
+    case_studies = [cs.text for cs in getattr(rfp_doc, "case_studies", [])]
+
+    proposal_prompt = build_proposal_prompt(rfp_text, company_background, case_studies)
+
+    proposal_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": proposal_prompt}],
         temperature=0.4
     )
-    proposal_content = scope_resp.choices[0].message.content.strip()
+    full_proposal_text = proposal_resp.choices[0].message.content.strip()
 
-    # 3. Create DOCX
+    # 3. Q&A Based Narrative
+    qa_by_section = {}
+    for q in rfp_doc.questions:
+        reviewer_answer = next(
+            (rev for rev in q.reviewers if rev.submit_status == "submitted"), 
+            None
+        )
+
+        if reviewer_answer:
+            answer_text = reviewer_answer.ans
+        elif q.answer_versions:
+            latest_version = sorted(q.answer_versions, key=lambda v: v.generated_at)[-1]
+            answer_text = latest_version.answer
+        else:
+            answer_text = "No answer submitted."
+
+        if q.section not in qa_by_section:
+            qa_by_section[q.section] = []
+        qa_by_section[q.section].append({"question": q.question_text, "answer": answer_text})
+
+    proposal_sections_text = ""
+    for section, qas in qa_by_section.items():
+        qa_text = "\n".join([f"Q: {qa['question']}\nA: {qa['answer']}" for qa in qas])
+
+        section_prompt = f"""
+        You are a proposal writer at Ringer.
+        Convert the following Q&A into a professional proposal narrative for the section: {section}.
+        Write it as if Ringer is presenting the proposal to the client — no questions, only polished answers.
+
+        --- Input Q&A ---
+        {qa_text}
+
+        --- Instructions ---
+        - Do not show "Q:" or "A:" in the output.
+        - Rewrite answers into flowing paragraphs.
+        - Maintain a persuasive, professional proposal tone.
+        - Combine related answers into one coherent narrative.
+        - Give concise and detailed solutions to the client.
+        """
+
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": section_prompt}],
+            temperature=0.4
+        )
+        section_text = resp.choices[0].message.content.strip()
+
+        proposal_sections_text += f"\n\n### {section}\n{section_text}"
+
+    # 4. Create DOCX
     doc = Document()
     doc.add_heading("RFP Proposal Response", level=0)
     doc.add_paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
-    # Add Executive Summary
+    # Executive Summary (optional, uncomment if needed)
     # doc.add_heading("Executive Summary", level=1)
     # doc.add_paragraph(executive_summary)
 
-    # Add Company Background
-    doc.add_heading(" Ringer's Company Background & Capabilities", level=1)
+    # Company Background
+    doc.add_heading(f"{company_name} – Company Background & Capabilities", level=1)
     doc.add_paragraph(company_background)
 
-    # Add Proposal Content
-    doc.add_heading("Proposal Response", level=1)
-    doc.add_paragraph(proposal_content)
+    # Structured Proposal
+    doc.add_heading("Structured Proposal", level=1)
+    doc.add_paragraph(full_proposal_text)
 
-    # Save document
+    # Proposal Response (Q&A-based)
+    doc.add_heading("Proposal Response (Q&A)", level=1)
+    doc.add_paragraph(proposal_sections_text)
+
+    # Save
     os.makedirs(GENERATED_FOLDER, exist_ok=True)
     file_name = f"rfp_response_{rfp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.docx"
     file_path = os.path.join(GENERATED_FOLDER, file_name)
@@ -987,7 +947,6 @@ async def generate_rfp_doc(
         "message": "RFP proposal generated successfully",
         "download_url": f"/download/{file_name}"
     }
-
 
 
 @router.patch('/admin/edit-answer')
@@ -1020,3 +979,42 @@ def edit_question_by_admin(
         raise http_exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.put("/update-profile")
+async def update_profile(
+    username: str = Form(...),
+    email: str = Form(...),
+    image: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.username = username
+    user.email = email
+
+    if image:
+        if not os.path.exists("uploads"):
+            os.makedirs("uploads")
+
+        file_name = f"{user.id}_{image.filename}"
+        file_location = os.path.join("uploads", file_name)
+        with open(file_location, "wb") as f:
+            f.write(await image.read())
+        user.image = file_name
+        print(f"Image saved: {file_location}")
+
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "Profile updated successfully",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "image_url": f"uploads/{user.image}" if user.image else None
+        }
+    }
