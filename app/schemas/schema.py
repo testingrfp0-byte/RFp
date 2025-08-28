@@ -2,7 +2,7 @@ from pydantic import BaseModel,Field
 from datetime import datetime
 from typing import List, Optional
 
-class Login(BaseModel):
+class LoginRequest(BaseModel):
     email: str
     password: str
 
@@ -115,22 +115,27 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     email: str
-    otp: str
     new_password: str
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str = Field(..., min_length=8)
 
+class reviwerdelete(BaseModel):
+    user_id: int
+    role:str
 
+class ChatInputRequest(BaseModel):
+    user_id: int
+    ques_id: int
+    chat_message: str
 
+class UpdateAnswerRequest(BaseModel):
+    answer: str
 
-
-
-
-
-
-
+class VerifyOtpRequest(BaseModel):
+    email: str
+    otp: str
 
 
 

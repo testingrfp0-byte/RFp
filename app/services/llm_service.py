@@ -383,6 +383,8 @@ def build_company_background_prompt(company_context: list[str]) -> str:
     Context:
     {chr(10).join(company_context)}
 
+    provide short and consice summary 
+
     Provide the final output as a professional "Company Background & Capabilities" 
     section suitable for an RFP proposal.
     """
@@ -390,15 +392,15 @@ def build_company_background_prompt(company_context: list[str]) -> str:
 
 def build_proposal_prompt(rfp_text: str, company_context: str, case_studies: list[str] = None) -> str:
     """
-    Build a structured proposal prompt to generate the proposal narrative.
-    Enriched with Ringer’s full service details.
+    Build a structured proposal prompt to generate a concise, persuasive proposal.
+    Includes Ringer’s service details and optional case studies.
     """
     case_study_text = "\n".join(case_studies) if case_studies else "No case studies provided."
 
     return f"""
-    You are a senior proposal writer preparing a professional response to an RFP.
-    Use the provided RFP details, enriched Ringer background, and (if available) case studies. 
-    Do NOT include an Executive Summary (that will be added separately).
+    You are a senior proposal writer creating a complete, professional, and concise RFP response. 
+    Use the RFP extract, enriched company background, and case studies (if available).
+    Do NOT include an Executive Summary (it will be added separately).
 
     --- RFP Extract ---
     {rfp_text}
@@ -409,69 +411,43 @@ def build_proposal_prompt(rfp_text: str, company_context: str, case_studies: lis
     --- Case Studies (Optional) ---
     {case_study_text}
 
-    Write a persuasive and structured proposal with the following sections:
+    Write a structured, **short and direct** proposal with the following sections:
 
-    1. Strategic Approach
-       - Summarize methodology for addressing the client’s objectives.
-       - Integrate creative development, media strategy, audience research, 
-         compliance considerations, SEO and social media best practices, 
-         and performance measurement.
-       - Highlight Ringer’s ability to co-create playbooks, provide discovery workshops, 
-         and deliver phased strategies aligned with client’s mission.
+    1. Strategic Approach  
+       - Clear methodology to meet client goals.  
+       - Cover creative, media, SEO, compliance, performance tracking.  
+       - Show Ringer’s workshops, phased strategies, co-creation.  
 
-    2. Scope of Work
-       - Break down deliverables as service modules (e.g., media planning, 
-         content creation, social media playbook development, SEO support, 
-         training & workshops, consulting).
-       - For each deliverable include:
-         - Tasks/Activities
-         - Outcomes/Impact
-         - Compliance considerations (if applicable)
-       - Where possible, reference similar services Ringer has delivered 
-         in past projects (from context).
+    2. Scope of Work  
+       - List service modules (media planning, content, playbooks, SEO, training).  
+       - For each: Tasks, Outcomes, Compliance notes.  
+       - Reference past successes where relevant.  
 
-    3. Timeline
-       - Organize into phases (Discovery, Development, Launch, Optimization).
-       - Provide estimated durations (weeks/months) + milestones.
-       - Include optional training/playbook delivery timelines.
+    3. Timeline  
+       - Use phases (Discovery, Development, Launch, Optimization).  
+       - Give estimated weeks/months + milestones.  
 
-    4. Budget & Investment
-       - Provide estimated ranges (not exact).
-       - Map investments to services such as media planning, playbook development, 
-         SEO, social media consulting, analytics/reporting.
-       - Explain ROI/value for each service.
-       - Emphasize flexibility depending on scope.
+    4. Budget & Investment  
+       - Show ranges (not exact).  
+       - Link investments to services.  
+       - Explain ROI/value.  
+       - Emphasize flexibility.  
 
-    5. Why Us
-       - Highlight Ringer’s strengths, past successes, and differentiators.
-       - Integrate provided case studies/examples where relevant.
-       - Emphasize proven expertise in:
-         • Local/Regional Media Planning
-         • Social Media Marketing (organic engagement, follower growth)
-         • SEO Playbook Development
-         • Training & Knowledge Transfer
-         • Analytics & Reporting
-       - Show how these capabilities align with the client’s mission.
+    5. Why Us  
+       - Highlight Ringer’s strengths + differentiators.  
+       - Insert case studies where relevant.  
+       - Stress expertise in media, social, SEO, training, analytics.  
 
-    6. Next Steps
-       - Suggest clear actions (e.g., schedule a discovery session, alignment call).
-       - Include placeholders for contact info (to be filled by user).
+    6. Next Steps  
+       - Suggest clear follow-up actions (e.g., discovery call).  
+       - Leave placeholders for contact info.  
 
-    Notes:
-    - Tone: Professional, persuasive, and client-focused.
-    - Match the language/style of the client’s RFP where possible.
-    - Avoid redundancy with the Executive Summary.
-    - Always weave in Ringer’s enriched capabilities from vector DB, 
-      not just the RFP text.
-    -always give client a complete proposal
+    Notes:  
+    - Tone: Professional, persuasive, client-focused.  
+    - Keep sentences concise and avoid redundancy.  
+    - Always deliver a complete proposal.  
+    - Align with client’s language where possible.  
     """
-
-
-
-
-
-
-
 
 
 def analyze_answer_score_only(question_text: str, answer_text: str) -> float:

@@ -1,17 +1,16 @@
-from fastapi import UploadFile,File,Depends,HTTPException,APIRouter,File,Path
+from fastapi import UploadFile,File,Depends,HTTPException,APIRouter,File
 from sqlalchemy.orm import Session
-from typing import List,Optional
+from typing import List
 from fastapi import status
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from app.config import mail_config
 from datetime import datetime
 from collections import defaultdict
-from pathlib import Path
 from app.db.database import get_db
 from sqlalchemy.orm import joinedload
-from app.schemas.schema import FileDetails,AssignReviewer,ReviewerOut,AdminEditRequest,RFPDocumentGroupedQuestionsOut,UserOut,NotificationRequest,GroupedRFPQuestionOut,QuestionOut
+from app.schemas.schema import FileDetails,AssignReviewer,ReviewerOut,AdminEditRequest,RFPDocumentGroupedQuestionsOut,UserOut,NotificationRequest,GroupedRFPQuestionOut,QuestionOut,reviwerdelete,ChatInputRequest
 from app.models.rfp_models import User,Reviewer,RFPDocument,RFPQuestion,CompanySummary,ReviewerAnswerVersion
-from app.services.llm_service import extract_text_from_pdf,extract_company_background_from_rfp,extract_questions_with_llm,summarize_results_with_llm,generate_search_queries,search_with_serpapi,analyze_answer_score_only ,query_vector_db,client,parse_rfp_summary,build_company_background_prompt,build_proposal_prompt,query_company_background,summarize_company_background
+from app.services.llm_service import extract_text_from_pdf,extract_company_background_from_rfp,extract_questions_with_llm,summarize_results_with_llm,generate_search_queries,search_with_serpapi,analyze_answer_score_only ,query_vector_db,client,parse_rfp_summary,build_company_background_prompt,build_proposal_prompt
 from app.api.routes.utils import get_current_user
 from docx import Document
 import os
@@ -19,6 +18,10 @@ from fastapi import status,Form
 import hashlib
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import re
+
+from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 
 router = APIRouter()
@@ -119,6 +122,7 @@ async def search_related_summary(
         "total_questions": questions_grouped
     }
 
+
 @router.get("/filedetails", response_model=List[FileDetails])
 def get_file_details(
     db: Session = Depends(get_db),
@@ -149,8 +153,8 @@ def get_file_details(
 
 @router.post("/upload-library")
 def upload_library(
-    file: UploadFile = File(...),
-    category: str = Form(...), 
+    files: List[UploadFile] = File(...),
+    category: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -161,29 +165,42 @@ def upload_library(
                 detail="Only admins can upload library documents."
             )
 
-        file_ext = os.path.splitext(file.filename)[1]
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-        saved_filename = f"{timestamp}_{file.filename}"
-        file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
+        uploaded_docs = []
+        for file in files:
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            if file_ext not in [".pdf", ".doc", ".docx", ".ppt", ".pptx"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file format: {file.filename}"
+                )
 
-        with open(file_path, "wb") as f:
-            f.write(file.file.read())
+            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            saved_filename = f"{timestamp}_{file.filename}"
+            file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
 
-        new_doc = RFPDocument(
-            filename=file.filename,
-            file_path=file_path,
-            category=category, 
-            admin_id=current_user.id,
-            uploaded_at=datetime.utcnow()
-        )
-        db.add(new_doc)
-        db.commit()
-        db.refresh(new_doc)
+            with open(file_path, "wb") as f:
+                f.write(file.file.read())
+
+            new_doc = RFPDocument(
+                filename=file.filename,
+                file_path=file_path,
+                category=category,
+                admin_id=current_user.id,
+                uploaded_at=datetime.utcnow()
+            )
+            db.add(new_doc)
+            db.commit()
+            db.refresh(new_doc)
+
+            uploaded_docs.append({
+                "document_id": new_doc.id,
+                "filename": new_doc.filename,
+                "category": new_doc.category
+            })
 
         return {
-            "message": "File uploaded successfully",
-            "document_id": new_doc.id,
-            "category": new_doc.category
+            "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
+            "documents": uploaded_docs
         }
 
     except Exception as e:
@@ -200,6 +217,10 @@ def get_user(db: Session = Depends(get_db), current_user: User = Depends(get_cur
         raise HTTPException (status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Only admins can access User details.")
     users= db.query(User).all()
+
+    if current_user.role == "admin":
+        users = db.query(User).all()
+
     return [    
         UserOut(
             user_id=user.id,
@@ -210,18 +231,50 @@ def get_user(db: Session = Depends(get_db), current_user: User = Depends(get_cur
         for user in users
     ]
 
+
+@router.get("/get_assign_users")
+def get_assigned_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can access assigned user details."
+        )
+    assigned_user_ids = (
+        db.query(RFPQuestion.assigned_user_id)
+        .filter(RFPQuestion.assigned_user_id != None)  
+        .distinct()
+        .all()
+    )
+
+    user_ids = [uid[0] for uid in assigned_user_ids]
+
+    if not user_ids:
+        return {"message": "No users assigned to any question", "users": []}
+
+    users = db.query(User).filter(User.id.in_(user_ids)).all()
+
+    return [
+        {
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+            "is_assigned": True
+        }
+        for user in users
+    ]
+
+
 @router.get("/userdetails/{user_id}")
 def get_user_by_id(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Only admins can access User details."
-        )
-
+    
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -599,7 +652,7 @@ async def remove_user(
         ).first()
         if ans:
             db.delete(ans)
-            
+
         db.delete(assign)
         db.commit()
 
@@ -819,7 +872,6 @@ def view_rfp_document(rfp_id: int, db: Session = Depends(get_db), current_user: 
 
 GENERATED_FOLDER = "generated_docs"
 
-
 @router.post("/generate-rfp-doc/")
 async def generate_rfp_doc(
     rfp_id: int,
@@ -833,14 +885,32 @@ async def generate_rfp_doc(
     if not rfp_doc:
         raise HTTPException(status_code=404, detail="RFP not found")
 
+    # --- Pre-check: Ensure all questions are analyzed ---
+    unanswered = []
+    for q in rfp_doc.questions:
+        has_reviewer_ans = any(rev.submit_status == "submitted" for rev in q.reviewers)
+        has_ai_ans = bool(q.answer_versions)
+        if not (has_reviewer_ans or has_ai_ans):
+            unanswered.append(q.question_text)
+
+    if unanswered:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"Report cannot be generated. {len(unanswered)} question(s) are not analyzed yet.",
+                "unanswered_questions": unanswered
+            }
+        )
+
+    # --- Executive Summary ---
     summary_obj = rfp_doc.summary
     if not summary_obj:
         raise HTTPException(status_code=404, detail="Executive summary not found")
     executive_summary = summary_obj.summary_text
 
-    company_name = getattr(rfp_doc, "client_name", "Ringer's")
+    company_name = getattr(rfp_doc, "client_name", "Ringer")
 
-    # 1. Company Background
+    # --- 1. Company Background ---
     company_context = query_vector_db(
         f"All details about Ringer (services, past proposals, playbooks, SEO, social media, training, case studies, pricing, methodology)", 
         top_k=8
@@ -854,7 +924,7 @@ async def generate_rfp_doc(
     )
     company_background = bg_resp.choices[0].message.content.strip()
 
-    # 2. Structured Proposal Narrative
+    # --- 2. Structured Proposal Narrative ---
     rfp_text = getattr(rfp_doc, "full_text", executive_summary)
     case_studies = [cs.text for cs in getattr(rfp_doc, "case_studies", [])]
 
@@ -867,7 +937,7 @@ async def generate_rfp_doc(
     )
     full_proposal_text = proposal_resp.choices[0].message.content.strip()
 
-    # 3. Q&A Based Narrative
+    # --- 3. Q&A Based Narrative ---
     qa_by_section = {}
     for q in rfp_doc.questions:
         reviewer_answer = next(
@@ -916,28 +986,101 @@ async def generate_rfp_doc(
 
         proposal_sections_text += f"\n\n### {section}\n{section_text}"
 
-    # 4. Create DOCX
+    # --- 4. Create DOCX with Logo + Headings ---
     doc = Document()
-    doc.add_heading("RFP Proposal Response", level=0)
-    doc.add_paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
 
-    # Executive Summary (optional, uncomment if needed)
+    # Cover Page
+    try:
+        logo_path = "image.png"  # Adjust path if needed
+        doc.add_picture(logo_path, width=Inches(1.5))
+        last_paragraph = doc.paragraphs[-1]
+        last_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    except Exception as e:
+        print("Logo could not be added:", e)
+
+    doc.add_heading("RFP Proposal Response", level=0)
+    doc.add_paragraph(f"Presented by Ringer")
+    doc.add_paragraph(f"Client: {company_name}")
+    doc.add_paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d')}")
+
+    # Executive Summary
+    # doc.add_page_break()
     # doc.add_heading("Executive Summary", level=1)
     # doc.add_paragraph(executive_summary)
 
     # Company Background
-    doc.add_heading(f"{company_name} – Company Background & Capabilities", level=1)
+    doc.add_page_break()
+    doc.add_heading("Company Background & Capabilities", level=1)
     doc.add_paragraph(company_background)
 
-    # Structured Proposal
-    doc.add_heading("Structured Proposal", level=1)
-    doc.add_paragraph(full_proposal_text)
+    # Strategic Approach
+    doc.add_page_break()
+    doc.add_heading("Strategic Approach", level=1)
+    doc.add_paragraph(
+        "Our methodology is designed to align with client objectives through "
+        "creative development, media strategy, SEO, compliance alignment, and "
+        "performance tracking. This approach ensures a phased and collaborative "
+        "plan where Ringer co-creates with stakeholders."
+    )
 
-    # Proposal Response (Q&A-based)
-    doc.add_heading("Proposal Response (Q&A)", level=1)
+    # Scope of Work
+    # doc.add_page_break()
+    # doc.add_heading("Scope of Work", level=1)
+    # doc.add_paragraph(full_proposal_text)
+
+    # Timeline
+    doc.add_page_break()
+    doc.add_heading("Timeline", level=1)
+    doc.add_paragraph(
+        "Based on Ringer’s proven frameworks, project delivery is divided into phases:\n\n"
+        "1. Discovery & Planning – 2-4 weeks\n"
+        "2. Development & Playbook Creation – 4-6 weeks\n"
+        "3. Launch & Activation – 6-8 weeks\n"
+        "4. Optimization & Reporting – ongoing monthly cycles\n\n"
+        "Exact timelines may vary depending on scope and client collaboration."
+    )
+
+    # Budget & Investment
+    doc.add_page_break()
+    doc.add_heading("Budget & Investment", level=1)
+    doc.add_paragraph(
+        "Ringer provides flexible investment ranges aligned to each service:\n\n"
+        "- Media Planning & Management: $10,000 – $15,000 (per 90-day cycle)\n"
+        "- Playbook Development: $10,000 – $12,000 (4–6 weeks)\n"
+        "- Social Media Consulting: $7,500 initial + ongoing hourly support\n"
+        "- SEO Playbook Development: $5,000+ (2–4 weeks)\n\n"
+        "Budgets are indicative and will be finalized upon discovery. "
+        "Our focus is always on delivering measurable ROI."
+    )
+
+    # Why Us
+    doc.add_page_break()
+    doc.add_heading("Why Us", level=1)
+    doc.add_paragraph(
+        "Ringer combines expertise in media planning, social media strategy, "
+        "SEO, training, and analytics. Our differentiators include:\n\n"
+        "- Proven success with leading retail and regulated industries\n"
+        "- Custom playbooks tailored to compliance needs\n"
+        "- Strategic workshops and ongoing leadership support\n"
+        "- Integrated reporting, analytics, and optimization frameworks\n\n"
+        "This unique mix positions Ringer as a trusted partner for scalable growth."
+    )
+
+    # Detailed Proposal Response (Q&A sections)
+    doc.add_page_break()
+    doc.add_heading("Detailed Proposal Response", level=1)
     doc.add_paragraph(proposal_sections_text)
 
-    # Save
+    # Next Steps
+    doc.add_page_break()
+    doc.add_heading("Next Steps", level=1)
+    doc.add_paragraph(
+        "We recommend scheduling a discovery session to align on priorities, "
+        "finalize scope, and confirm timelines.\n\n"
+        "Please contact us at info@ringer.com to arrange the next discussion."
+    )
+
+    # Save File
     os.makedirs(GENERATED_FOLDER, exist_ok=True)
     file_name = f"rfp_response_{rfp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.docx"
     file_path = os.path.join(GENERATED_FOLDER, file_name)
@@ -947,7 +1090,6 @@ async def generate_rfp_doc(
         "message": "RFP proposal generated successfully",
         "download_url": f"/download/{file_name}"
     }
-
 
 @router.patch('/admin/edit-answer')
 def edit_question_by_admin(
@@ -1018,3 +1160,132 @@ async def update_profile(
             "image_url": f"uploads/{user.image}" if user.image else None
         }
     }
+
+@router.delete("/delete-reviewer_user")
+async def delete_reviewer(
+    request: reviwerdelete,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Only admins can remove reviewers."
+        )
+    if request.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin can not be deleted"
+        )
+
+    user = db.query(User).filter(User.id == request.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found."
+        )
+
+    if user.role != request.role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"User role mismatch. Expected '{request.role}', found '{user.role}'."
+        )
+
+    db.query(ReviewerAnswerVersion).filter(
+        ReviewerAnswerVersion.user_id == request.user_id
+    ).delete(synchronize_session=False)
+
+    db.query(Reviewer).filter(
+        Reviewer.user_id == request.user_id
+    ).delete(synchronize_session=False)
+
+    db.delete(user)
+    db.commit()
+
+    return {
+        "message": f"User (id={request.user_id}, role={user.role}) "
+                   f"and all related reviewer data deleted successfully"
+    }
+
+@router.post("/questions/chat-input")
+def regenerate_answer_with_chat(
+    request: ChatInputRequest,
+    db: Session = Depends(get_db)
+):
+    user_id = request.user_id
+    ques_id = request.ques_id
+    chat_message = request.chat_message
+
+    reviewer = db.query(Reviewer).filter_by(user_id=user_id, ques_id=ques_id).first()
+    if not reviewer:
+        raise HTTPException(status_code=404, detail="Reviewer not assigned to this question")
+
+    question = db.query(RFPQuestion).filter_by(id=ques_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    base_answer = reviewer.ans or ""
+
+    system_prompt = (
+        "You are a senior proposal writer. "
+        "Refine and regenerate the proposal answer based on the user’s feedback. "
+        "Preserve structure, make it professional, and incorporate requested changes. "
+        "Do not use markdown symbols like ** or ## in the response."
+        "Do not include or repeat the question text in your response. "
+    )
+
+    user_prompt = f"""
+    Question: {question.question_text}
+    Previous Answer: {base_answer}
+    Reviewer Feedback: {chat_message}
+    Please regenerate a refined answer.
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.7,
+    )
+
+    refined_answer = response.choices[0].message.content.strip()
+
+    refined_answer = re.sub(r"(\*\*|##+)", "", refined_answer)
+
+    if not reviewer.ans:  
+        reviewer.ans = refined_answer
+        db.commit()
+        return {
+            "status": "success",
+            "message": "First answer generated and stored",
+            "answer": refined_answer,
+            "source": "Reviewer.ans"
+        }
+    else:
+        new_version = ReviewerAnswerVersion(
+            user_id=user_id,
+            ques_id=ques_id,
+            answer=refined_answer,
+            generated_at=datetime.utcnow()
+        )
+        db.add(new_version)
+        reviewer.ans = refined_answer
+        db.commit()
+        db.refresh(new_version)
+
+        return {
+            "status": "success",
+            "message": "Answer refined and stored as new version",
+            "new_answer_version": {
+                "id": new_version.id,
+                "ques_id": ques_id,
+                "user_id": user_id,
+                "answer": refined_answer,
+                "generated_at": new_version.generated_at,
+            }
+        }
+    
+
+

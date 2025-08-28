@@ -88,13 +88,10 @@ def build_image_url(request: Request, image_value: str | None) -> str | None:
     if not image_value:
         return None
 
-    # If already absolute, return as is
     if image_value.startswith("http://") or image_value.startswith("https://"):
         return image_value
 
-    # Normalize to just the filename (drops "uploads/" or any path parts)
     filename = os.path.basename(image_value)
 
-    # Build absolute URL from current request base (handles localhost or your domain)
     base = str(request.base_url).rstrip("/")          
     return f"{base}/uploads/{filename}"           

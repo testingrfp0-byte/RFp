@@ -14,22 +14,32 @@ def assigned_questions(db: Session, current_user: User):
             .all()
         )
 
-        results = [
-            {
+        results = []
+        for question, reviewer in assignments:
+            latest_answer = (
+                db.query(ReviewerAnswerVersion)
+                .filter_by(user_id=reviewer.user_id, ques_id=reviewer.ques_id)
+                .order_by(ReviewerAnswerVersion.generated_at.desc())
+                .first()
+            )
+
+            results.append({
                 "rfp_id": question.rfp_id,
                 "filename": question.rfp.filename,
                 "question_id": question.id,
                 "question_text": question.question_text,
                 "section": question.section,
                 "status": reviewer.status,
-                "assigned_at": question.assigned_at
-            }
-            for question, reviewer in assignments
-        ]
+                "assigned_at": question.assigned_at,
+                "is_submitted": reviewer.submit_status == "submitted" or reviewer.submitted_at is not None,
+                "answer_id": latest_answer.id if latest_answer else None
+            })
 
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
     
 def generate_answers_service(db: Session, current_user: User, question_id: int):
     try:
@@ -90,7 +100,40 @@ def answer_versions(db: Session, current_user: User, question_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def update_answer_service(db: Session, current_user: User, question_id: int):
+# def update_answer_service(db: Session, current_user: User, question_id: int):
+#     try:
+#         assignment = (
+#             db.query(RFPQuestion, Reviewer)
+#             .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
+#             .filter(
+#                 Reviewer.user_id == current_user.id,
+#                 Reviewer.ques_id == question_id
+#             )
+#             .first()
+#         )
+
+#         if assignment is None:
+#             raise HTTPException(status_code=403, detail="Question not assigned to current user")
+
+#         question, reviewer = assignment
+#         context = get_similar_context(question.question_text)
+#         answer = generate_answer_with_context(question.question_text, context)
+#         reviewer.ans = answer
+
+#         db.commit()
+
+#         return {
+#             "message": "Answer has been updated successfully.",
+#             "question_id": question.id,
+#             "answer": answer
+#         }
+
+#     except HTTPException as http_exc:
+#         raise http_exc
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+def update_answer_service(db: Session, current_user: User, question_id: int, new_answer: str):
     try:
         assignment = (
             db.query(RFPQuestion, Reviewer)
@@ -106,22 +149,32 @@ def update_answer_service(db: Session, current_user: User, question_id: int):
             raise HTTPException(status_code=403, detail="Question not assigned to current user")
 
         question, reviewer = assignment
-        context = get_similar_context(question.question_text)
-        answer = generate_answer_with_context(question.question_text, context)
-        reviewer.ans = answer
+
+        if reviewer.ans:
+            version = ReviewerAnswerVersion(
+                user_id=current_user.id,
+                ques_id=question.id,
+                answer=reviewer.ans,
+            )
+            db.add(version)
+
+        reviewer.ans = new_answer
 
         db.commit()
+        db.refresh(reviewer)
 
         return {
             "message": "Answer has been updated successfully.",
             "question_id": question.id,
-            "answer": answer
+            "current_answer": reviewer.ans 
         }
 
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 def submit_service(db: Session, current_user: User, question_id: int, status: str,):
     try:
@@ -149,6 +202,7 @@ def submit_service(db: Session, current_user: User, question_id: int, status: st
         return {
             "message": "Submission successful",
             "question_id": question_id,
+            "answer": reviewer.ans ,
             "submit_status": status
         }
 
