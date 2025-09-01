@@ -137,6 +137,12 @@ class VerifyOtpRequest(BaseModel):
     email: str
     otp: str
 
+from pydantic import BaseModel
+
+class ReassignReviewerRequest(BaseModel):
+    user_id: int
+    ques_id: int
+    file_id: int
 
 
 

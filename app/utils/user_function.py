@@ -3,7 +3,7 @@ from app.models.rfp_models import RFPQuestion, Reviewer, User,ReviewerAnswerVers
 from fastapi import HTTPException
 from app.services.llm_service import get_similar_context,generate_answer_with_context
 from datetime import datetime
-
+from app.api.routes.utils import clean_answer
 
 def assigned_questions(db: Session, current_user: User):
     try:
@@ -39,7 +39,6 @@ def assigned_questions(db: Session, current_user: User):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
     
 def generate_answers_service(db: Session, current_user: User, question_id: int):
     try:
@@ -59,6 +58,7 @@ def generate_answers_service(db: Session, current_user: User, question_id: int):
         question, reviewer = assignment
         context = get_similar_context(question.question_text)
         answer = generate_answer_with_context(question.question_text, context)
+        answer = clean_answer(answer)
 
         version = ReviewerAnswerVersion(
             user_id=current_user.id,
@@ -100,38 +100,6 @@ def answer_versions(db: Session, current_user: User, question_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# def update_answer_service(db: Session, current_user: User, question_id: int):
-#     try:
-#         assignment = (
-#             db.query(RFPQuestion, Reviewer)
-#             .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
-#             .filter(
-#                 Reviewer.user_id == current_user.id,
-#                 Reviewer.ques_id == question_id
-#             )
-#             .first()
-#         )
-
-#         if assignment is None:
-#             raise HTTPException(status_code=403, detail="Question not assigned to current user")
-
-#         question, reviewer = assignment
-#         context = get_similar_context(question.question_text)
-#         answer = generate_answer_with_context(question.question_text, context)
-#         reviewer.ans = answer
-
-#         db.commit()
-
-#         return {
-#             "message": "Answer has been updated successfully.",
-#             "question_id": question.id,
-#             "answer": answer
-#         }
-
-#     except HTTPException as http_exc:
-#         raise http_exc
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
 
 def update_answer_service(db: Session, current_user: User, question_id: int, new_answer: str):
     try:

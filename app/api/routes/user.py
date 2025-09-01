@@ -35,8 +35,6 @@ def get_answer_versions(
 ):
     return answer_versions(db, current_user, question_id)
 
-
-
 @router.patch('/update-answer/{question_id}')
 def update_answer_endpoint(
     question_id: int,

@@ -11,6 +11,7 @@ from email.mime.text import MIMEText
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 import os
+import re
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -31,7 +32,6 @@ def verify_token(token: str):
         return payload
     except JWTError:
         return None
-
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -60,7 +60,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         user.all_admins = []
 
     return user
-
 
 def generate_otp(length: int = 4):
     return ''.join(random.choices(string.digits, k=length))
@@ -95,3 +94,8 @@ def build_image_url(request: Request, image_value: str | None) -> str | None:
 
     base = str(request.base_url).rstrip("/")          
     return f"{base}/uploads/{filename}"           
+
+def clean_answer(text: str) -> str:
+    text = re.sub(r'[#*`]+', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()  
+    return text

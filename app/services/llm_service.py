@@ -28,37 +28,36 @@ def extract_text_from_pdf(pdf_file: bytes) -> str:
 
 def generate_search_queries(rfp_text: str) -> list:
     prompt = f"""
-        You are a professional market research analyst specializing in company profiling from Request for Proposal (RFP) documents.
+        You are an expert market intelligence researcher specializing in analyzing companies from Request for Proposal (RFP) documents.
 
-Your task is to generate **exactly 12 highly specific Google search queries** based solely on the RFP content provided below.
+        Your task: Generate exactly 12 highly targeted Google search queries based only on the RFP text below.  
 
-The queries must:
-- Be **specific and targeted** — avoid generic terms like "about the company" or "services."
-- Include **product names**, **digital platforms**, **industry-specific terms**, or **unique phrases** found in the RFP.
-- Cover multiple areas:  
-  1. Company history and ownership  
-  2. Core products, services, or solutions  
-  3. Industry verticals or markets served  
-  4. Partnerships, clients, and case studies  
-  5. Locations and employee count  
-  6. Awards, recognition, and certifications  
-  7. Financials, funding, or revenue (if available)  
-  8. Competitors and market positioning  
-  9. Technology platforms mentioned in the RFP  
-  10. Recent press releases or news coverage
-- **Additionally**, include **two targeted queries** to verify:
-  11. Proposal submission requirements for this RFP
-  12. Official submission due date / deadlines for this RFP
+        The queries must:
+        - Be precise, varied, and investigative.
+        - Always incorporate unique identifiers from the RFP (company name, product names, technologies, industries).
+        - Cover multiple areas:  
+        1. Company history and ownership  
+        2. Core products, services, or solutions  
+        3. Industry verticals or markets served  
+        4. Partnerships, clients, and case studies  
+        5. Locations and employee count  
+        6. Awards, recognition, and certifications  
+        7. Financials, funding, or revenue (if available)  
+        8. Competitors and market positioning  
+        9. Technology platforms mentioned in the RFP  
+        10. Recent press releases or news coverage
+        11. Proposal submission requirements for this RFP
+        12. Official submission due date / deadlines for this RFP
 
-Format:
-- Output as a bullet list, one query per line.
-- Do not add explanations — only the search queries.
+        Format:
+        - Output as a bullet list, one query per line.
+        - Do not add explanations — only the search queries.
 
-RFP Text:
-        \"\"\"
-        {rfp_text}
-        \"\"\"
-        """
+        RFP Text:
+                \"\"\"
+                {rfp_text}
+                \"\"\"
+                """
     
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -93,8 +92,6 @@ def search_with_serpapi(query: str):
                 "snippet": item.get("snippet")
             })
     return results
-
-
 
 def extract_company_background_from_rfp(rfp_text: str) -> str:
     """
@@ -140,7 +137,6 @@ NEVER place submission deadlines, contact details, or proposal instructions in S
   - Eligibility criteria
   - Compliance or certification requirements
   - Any required attachments or forms
-- If a detail is missing, explicitly state: "Not specified in RFP."
 
 ---
 Section 1: Purpose of the RFP
@@ -166,7 +162,7 @@ RFP Text:
             {"role": "user", "content": prompt}
         ],
         temperature=0.2,
-        max_tokens=1800
+        max_tokens=2000
     )
 
     return response.choices[0].message.content.strip()
@@ -181,41 +177,46 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
     combined_snippets = "\n".join(all_snippets)
 
     prompt = f"""
-You are a senior strategy consultant preparing a formal RFP analysis brief.
+        You are a senior strategy consultant preparing a formal RFP analysis brief.
+        Important formatting rule:
+        - Each section must be a clearly separated block.
+        - Insert a blank line between paragraphs for readability.
 
-You are given:
-1. **Company Description & Purpose** extracted from the RFP.
-2. **Web search snippets** gathered from authoritative sources.
+        You are given:
+        1. **Company Description & Purpose** extracted from the RFP.
+        2. **Web search snippets** gathered from authoritative sources.
 
-Your job: Produce a **three-part structured brief** in the exact format below.
-Do not merge submission deadlines into the Purpose section — they must be in Section 3.
+        Your job: Produce a **three-part structured brief** in the exact format below.
+        Do not merge submission deadlines into the Purpose section — they must be in Section 3.
 
----
-Section 1: Purpose of the RFP
-[Full paragraph explanation of why the RFP was issued, its goals, scope, and strategic drivers.
-Do not include submission deadlines or contacts here.]
+        ---
+        **Section 1: Purpose of the RFP**
+        [Full paragraph explanation of why the RFP was issued, its goals, scope, and strategic drivers.
+        Do not include submission deadlines or contacts here.]\n\n
 
-Section 2: Company Background
-[Full paragraph company profile combining RFP content and verified details from the web.
-Include: company name, founding year, HQ, ownership, core offerings, markets served,
-strategic initiatives, awards, major clients/partners, and market position.]
+        **Section 2: Company Background**
+        [Full paragraph company profile combining RFP content and verified details from the web.
+        Include: company name, founding year, HQ, ownership, core offerings, markets served,
+        strategic initiatives, awards, major clients/partners, and market position.]\n\n
 
-Section 3: Submission Details & Requirements
-[List all operational details exactly as given in the RFP: submission due date, question deadline,
-contact names/emails, submission method, required proposal contents, eligibility criteria,
-special requirements. If not mentioned, write "Not specified in RFP."]
----
+        **Section 3: Submission Details & Requirements**
+        [List all operational details exactly as given in the RFP: submission due date, question deadline,
+        contact names/emails, submission method, required proposal contents, eligibility criteria,
+        special requirements. If not mentioned, write "Not specified in RFP."]\n\n
+        ---
 
-RFP Company Description:
-\"\"\"
-{rfp_company_text}
-\"\"\"
 
-Web Search Snippets:
-\"\"\"
-{combined_snippets}
-\"\"\"
-"""
+
+        RFP Company Description:
+        \"\"\"
+        {rfp_company_text}
+        \"\"\"
+
+        Web Search Snippets:
+        \"\"\"
+        {combined_snippets}
+        \"\"\"
+        """
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -232,60 +233,59 @@ Web Search Snippets:
 
 def extract_questions_with_llm(pdf_text: str) -> dict:
     prompt = f"""
-You are a professional RFP analysis assistant.
+        You are a professional RFP analysis assistant.
 
-Your task is to carefully review the full RFP text provided below and extract **every question, instruction, or prompt** that asks the vendor to provide a response — whether explicitly or implicitly. Focus on identifying **all response-required elements**.
+        Your task: Review the full RFP text and extract every **question, instruction, or prompt** that requires a vendor response — explicit or implied. Focus on identifying all response-required items.
 
-###  What to extract:
-- your task is extract the question section wise 
-- Any question (e.g., “What is your timeline?”)
-- Any instruction (e.g., “Provide your pricing breakdown.”)
-- Any implied prompt (e.g., “Include case studies…” even if not phrased as a question)
+        What to extract:
+        - Extract all questions section by section.
+        - Include explicit questions (e.g., "What is your timeline?")
+        - Include instructions (e.g., "Provide your pricing breakdown.")
+        - Include implied prompts (e.g., "Include case studies…" even if not phrased as a question)
 
-###  How to organize:
-Group all extracted items **by the section heading or number** (like "1.1 Scope", "2.1 What Should Your Response Contain", etc.). For each group:
-- Use a clear `"section"` title from the RFP
-- List response-required items using structured numbering like `"1.1"`, `"1.2"`, `"2.1"` etc. — restart numbering for each section.
+        How to organize:
+        - Group all extracted items by the **section heading or number** (e.g., "1.1 Scope", "2.1 Proposal Requirements").
+        - Each group must have:
+        - A "section" field with the section heading/number.
+        - A "questions" list containing numbered items. Restart numbering for each section.
 
-###  Output Format:
-{{
-  "1": {{
-    "section": "1.1",
-    "questions": [
-      "1.1 Define the brand's personality, values, mission, and vision.",
-      "1.2 Describe how you will create a marketing strategy for our product suite.",
-      ...
-    ]
-  }},
-  "2": {{
-    "section": "2.1 What Should Your Response Contain",
-    "questions": [
-      "2.1 Provide your organization’s overview and differentiators.",
-      "2.2 Explain your execution approach in detail.",
-      ...
-    ]
-  }},
-  ...
-}}
+        Output format (strict JSON only, no extra symbols, no Markdown, no bullet points):
+        {{
+        "1": {{
+            "section": "1.1 Scope",
+            "questions": [
+            "1.1 Define the brand's personality, values, mission, and vision.",
+            "1.2 Describe how you will create a marketing strategy for our product suite."
+            ]
+        }},
+        "2": {{
+            "section": "2.1 Proposal Requirements",
+            "questions": [
+            "2.1 Provide your organization’s overview and differentiators.",
+            "2.2 Explain your execution approach in detail."
+            ]
+        }}
+        }}
 
-###  Very Important:
-- Cover **all** sections that request input from vendors, including sections like “Scope,” “Proposal Requirements,” “Submission,” and “Response Format.”
-- Do **not skip or summarize**. Extract each individual question/prompt explicitly.
-- Do **not add** questions that are not in the text.
-- Focus only on **questions/prompts meant for vendor responses**.
+        Important rules:
+        - Cover every section that requests input (Scope, Proposal Requirements, Submission, Response Format, etc.).
+        - Do not skip or summarize — extract each question/prompt fully.
+        - Do not create or infer new questions that are not in the text.
+        - Do not include any Markdown symbols (#, *, -, >).
+        - The output must be **valid JSON only**.
 
-###  RFP Document Text:
-\"\"\"
-{pdf_text}
-\"\"\"
-"""
+        RFP Document Text:
+        \"\"\"
+        {pdf_text}
+        \"\"\"
+        """
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
-                "content": "You are an expert assistant trained to extract structured, section-wise response prompts from RFP documents."
+                "content": "You are an expert assistant trained to extract structured, section-wise response prompts from RFP documents. Always return clean JSON with no extra formatting."
             },
             {"role": "user", "content": prompt}
         ],
@@ -302,6 +302,7 @@ Group all extracted items **by the section heading or number** (like "1.1 Scope"
         grouped_questions = {"raw_text": content}
 
     return grouped_questions
+
 
 def get_user_by_email(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()

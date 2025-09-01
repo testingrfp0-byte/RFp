@@ -8,7 +8,7 @@ from datetime import datetime
 from collections import defaultdict
 from app.db.database import get_db
 from sqlalchemy.orm import joinedload
-from app.schemas.schema import FileDetails,AssignReviewer,ReviewerOut,AdminEditRequest,RFPDocumentGroupedQuestionsOut,UserOut,NotificationRequest,GroupedRFPQuestionOut,QuestionOut,reviwerdelete,ChatInputRequest
+from app.schemas.schema import FileDetails,AssignReviewer,ReviewerOut,AdminEditRequest,RFPDocumentGroupedQuestionsOut,UserOut,NotificationRequest,GroupedRFPQuestionOut,QuestionOut,reviwerdelete,ChatInputRequest,ReassignReviewerRequest
 from app.models.rfp_models import User,Reviewer,RFPDocument,RFPQuestion,CompanySummary,ReviewerAnswerVersion
 from app.services.llm_service import extract_text_from_pdf,extract_company_background_from_rfp,extract_questions_with_llm,summarize_results_with_llm,generate_search_queries,search_with_serpapi,analyze_answer_score_only ,query_vector_db,client,parse_rfp_summary,build_company_background_prompt,build_proposal_prompt
 from app.api.routes.utils import get_current_user
@@ -78,7 +78,6 @@ async def search_related_summary(
             if snippet := item.get("snippet"):
                 all_snippets.append(snippet)
 
-    # summary_text = summarize_results_with_llm(all_snippets, rfp_company_text=company_rfp_text)
     raw_summary = summarize_results_with_llm(all_snippets, rfp_company_text=company_rfp_text)
     structured_summary = parse_rfp_summary(raw_summary)
 
@@ -1207,7 +1206,7 @@ async def delete_reviewer(
                    f"and all related reviewer data deleted successfully"
     }
 
-@router.post("/questions/chat-input")
+@router.post("/questions/chat_input")
 def regenerate_answer_with_chat(
     request: ChatInputRequest,
     db: Session = Depends(get_db)
@@ -1287,5 +1286,96 @@ def regenerate_answer_with_chat(
             }
         }
     
+
+@router.post("/reassign")
+async def reassign_reviewer(
+    request: ReassignReviewerRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Only admins can reassign reviewers."
+            )
+
+        user = db.query(User).filter(User.id == request.user_id).first()
+        if not user or not user.email:
+            raise HTTPException(status_code=404, detail="User not found or email missing")
+
+        question = db.query(RFPQuestion).filter(
+            RFPQuestion.id == request.ques_id,
+            RFPQuestion.rfp_id == request.file_id
+        ).first()
+        if not question:
+            raise HTTPException(status_code=404, detail="Question not found")
+
+        existing = db.query(Reviewer).filter_by(
+            user_id=request.user_id,
+            ques_id=request.ques_id
+        ).first()
+
+        if existing:
+            existing.submit_status = "process" 
+            existing.time = datetime.utcnow()
+            existing.question = question.question_text
+        else:
+            reviewer_entry = Reviewer(
+                user_id=request.user_id,
+                ques_id=request.ques_id,
+                question=question.question_text,
+                file_id=request.file_id,
+                admin_id=current_user.id,
+                submit_status="process"
+            )
+            db.add(reviewer_entry)
+            existing = reviewer_entry 
+
+        question.assigned_at = datetime.utcnow()
+        db.commit()   
+
+        fm = FastMail(mail_config)
+        message = MessageSchema(
+            subject="RFP Question Reassignment Notification",
+            recipients=[user.email],
+            body=f"""
+                Hello {user.username},
+
+                You have been reassigned to the following RFP question:
+
+                Question ID: {question.id}
+                Section: {question.section or 'N/A'}
+                Question: {question.question_text}
+
+                Please log in to the system to review and provide your response.
+                <p>Please click the button below to log in and Rereview:</p>
+                <a href="{LOGIN_URL}" 
+                   style="display:inline-block; padding:10px 20px; font-size:16px; 
+                          color:#fff; background-color:#007BFF; text-decoration:none; 
+                          border-radius:5px;">
+                    Log In
+                </a>
+                <p>Best regards,<br>RFP Automation System</p>
+                
+            """,
+            subtype=MessageType.plain
+        )
+        await fm.send_message(message)
+
+        existing.status = "notified"
+        db.commit()
+
+        return {
+            "message": "Reviewer reassigned successfully and notified via email",
+            "user_id": request.user_id,
+            "question_id": request.ques_id,
+            "status": existing.status,
+            "submit_status": existing.submit_status
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
