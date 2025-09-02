@@ -102,58 +102,61 @@ def extract_company_background_from_rfp(rfp_text: str) -> str:
     """
 
     prompt = f"""
-You are an expert RFP analyst.
+        You are an expert RFP analyst.
 
-From the provided RFP text, extract **exactly three sections** in the specified order.
-Do not summarize — copy the original wording wherever possible, merging sentences if needed.
-NEVER place submission deadlines, contact details, or proposal instructions in Section 1 or Section 2.
+        From the provided RFP text, extract **exactly three sections** in the specified order.
+        Do not summarize — copy the original wording wherever possible, merging sentences if needed.
+        NEVER place submission deadlines, contact details, or proposal instructions in Section 1 or Section 2.
 
-### Section 1: Purpose of the RFP
-- Explain why this RFP was issued.
-- Include all stated and implied goals.
-- Mention stakeholders or departments involved.
-- Include timelines, deliverables, or strategic drivers ONLY if related to the purpose — NOT submission deadlines.
+        ### Section 1: Purpose of the RFP
+        - Explain why this RFP was issued.
+        - Include all stated and implied goals.
+        - Mention stakeholders or departments involved.
+        - Include timelines, deliverables, or strategic drivers ONLY if related to the purpose — NOT submission deadlines.
 
-### Section 2: Company Background
-- Include all background details about the issuing organization from across the document:
-  - Company name
-  - History and founding year
-  - Locations and service areas
-  - Size, ownership, or affiliations
-  - Products, services, and solutions
-  - Industry sectors served
-  - Mission, vision, values
-  - Awards, recognition, partnerships, major clients
-  - Any strategic initiatives or expansions
-- No submission instructions or deadlines here.
+        ### Section 2: Company Background
+        - Include all background details about the issuing organization from across the document:
+        - Company name
+        - History and founding year
+        - Locations and service areas
+        - Size, ownership, or affiliations
+        - Products, services, and solutions
+        - Industry sectors served
+        - Mission, vision, values
+        - Awards, recognition, partnerships, major clients
+        - Any strategic initiatives or expansions
+        - No submission instructions or deadlines here.
 
-### Section 3: Submission Details & Requirements
-- Copy verbatim all details about:
-  - Submission due date and time
-  - Deadline for submitting questions
-  - Names, emails, and phone numbers for submission or questions
-  - Submission method (email, portal, etc.)
-  - Proposal format, structure, or mandatory contents
-  - Eligibility criteria
-  - Compliance or certification requirements
-  - Any required attachments or forms
+        ### Section 3: Submission Details & Requirements
+        - Copy verbatim all details about:
+        - Submission due date and time
+        - Deadline for submitting questions
+        - Names, emails, and phone numbers for submission or questions
+        - Submission method (email, portal, etc.)
+        - Proposal format, structure, or mandatory contents
+        - Eligibility criteria
+        - Compliance or certification requirements
+        - Any required attachments or forms
+        
+        -not include the repeated the headings 
 
----
-Section 1: Purpose of the RFP
-[content]
 
-Section 2: Company Background
-[content]
+        ---
+        Section 1: Purpose of the RFP
+        [content]
 
-Section 3: Submission Details & Requirements
-[content]
----
+        Section 2: Company Background
+        [content]
 
-RFP Text:
-\"\"\"
-{rfp_text}
-\"\"\"
-"""
+        Section 3: Submission Details & Requirements
+        [content]
+        ---
+
+        RFP Text:
+        \"\"\"
+        {rfp_text}
+        \"\"\"
+        """
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -172,27 +175,27 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
     """
     Combine RFP company description and web search snippets into a
     structured, executive-level analysis with 3 fixed sections.
+    Ensures Submission Details & Requirements are comprehensive,
+    accurate, and formatted as a bullet list with clean spacing.
     """
 
     combined_snippets = "\n".join(all_snippets)
 
     prompt = f"""
         You are a senior strategy consultant preparing a formal RFP analysis brief.
-        Important formatting rule:
-        - Each section must be a clearly separated block.
+        
+        Critical formatting & content rules:
+        - Produce exactly 3 sections in the order below.
         - Insert a blank line between paragraphs for readability.
-
-        You are given:
-        1. **Company Description & Purpose** extracted from the RFP.
-        2. **Web search snippets** gathered from authoritative sources.
-
-        Your job: Produce a **three-part structured brief** in the exact format below.
-        Do not merge submission deadlines into the Purpose section — they must be in Section 3.
+        - In Section 3, extract *all* requirements and details from the RFP, even if they appear in multiple places.
+        - Section 3 must be presented as a bullet list with each requirement on its own line.
+        - Do not paraphrase or omit submission requirements — quote or restate them faithfully.
+        - Do not place deadlines or contacts in Section 1; only in Section 3.
 
         ---
         **Section 1: Purpose of the RFP**
         [Full paragraph explanation of why the RFP was issued, its goals, scope, and strategic drivers.
-        Do not include submission deadlines or contacts here.]\n\n
+        Exclude submission deadlines and contacts here.]\n\n
 
         **Section 2: Company Background**
         [Full paragraph company profile combining RFP content and verified details from the web.
@@ -200,12 +203,11 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
         strategic initiatives, awards, major clients/partners, and market position.]\n\n
 
         **Section 3: Submission Details & Requirements**
-        [List all operational details exactly as given in the RFP: submission due date, question deadline,
-        contact names/emails, submission method, required proposal contents, eligibility criteria,
-        special requirements. If not mentioned, write "Not specified in RFP."]\n\n
+        [Bullet list of every requirement and operational detail from the RFP,
+        including submission due date, question deadline, contact names/emails,
+        submission method, required proposal contents, eligibility criteria,
+        and any special instructions or conditions. ]\n\n
         ---
-
-
 
         RFP Company Description:
         \"\"\"
@@ -216,16 +218,23 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
         \"\"\"
         {combined_snippets}
         \"\"\"
-        """
+    """
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You produce structured three-part RFP summaries with clear separation of purpose, background, and submission details."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": (
+                    "You produce structured three-part RFP summaries. "
+                    "Always include every submission detail in Section 3, formatted as a bullet list. "
+                    "Maintain clear formatting with line breaks after paragraphs."
+                ),
+            },
+            {"role": "user", "content": prompt},
         ],
         temperature=0.3,
-        max_tokens=2000
+        max_tokens=2000,
     )
 
     return response.choices[0].message.content.strip()
@@ -235,62 +244,69 @@ def extract_questions_with_llm(pdf_text: str) -> dict:
     prompt = f"""
         You are a professional RFP analysis assistant.
 
-        Your task: Review the full RFP text and extract every **question, instruction, or prompt** that requires a vendor response — explicit or implied. Focus on identifying all response-required items.
+        Task:
+        Extract every **question, instruction, or prompt** from the RFP text that requires a vendor response. 
 
-        What to extract:
-        - Extract all questions section by section.
-        - Include explicit questions (e.g., "What is your timeline?")
-        - Include instructions (e.g., "Provide your pricing breakdown.")
-        - Include implied prompts (e.g., "Include case studies…" even if not phrased as a question)
+         Do not:
+        - Summarize, rewrite, shorten, or change the wording.
+        - Add or infer questions that are not explicitly in the RFP.
+        - Include context-only text (Introductions, Needs Statements, Goals, Overviews).
+        -do not include the unnecessary questions like 'response submitted at '
 
-        How to organize:
-        - Group all extracted items by the **section heading or number** (e.g., "1.1 Scope", "2.1 Proposal Requirements").
-        - Each group must have:
-        - A "section" field with the section heading/number.
-        - A "questions" list containing numbered items. Restart numbering for each section.
+        Not:
+        - not include the unnecessary question like must be submitted via e-mail,
 
-        Output format (strict JSON only, no extra symbols, no Markdown, no bullet points):
+         Do:
+        - Capture each item **exactly as written** in the RFP (verbatim).
+        - Preserve section hierarchy and numbering.
+        - If a section is "1.2 Proposal Requirements", the questions must be numbered "1.2.1", "1.2.2", etc.
+        - Restart question numbering inside each section.
+        - Group questions by section heading/number.
+        - Always prefix questions with their section number.
+
+        Output format:
+        Strict JSON only, no Markdown or commentary.
+
+        Example:
         {{
-        "1": {{
+          "1": {{
             "section": "1.1 Scope",
             "questions": [
-            "1.1 Define the brand's personality, values, mission, and vision.",
-            "1.2 Describe how you will create a marketing strategy for our product suite."
+              "1.1.1 Define the brand's personality, values, mission, and vision.",
+              "1.1.2 Describe how you will create a marketing strategy for our product suite."
             ]
-        }},
-        "2": {{
+          }},
+          "2": {{
             "section": "2.1 Proposal Requirements",
             "questions": [
-            "2.1 Provide your organization’s overview and differentiators.",
-            "2.2 Explain your execution approach in detail."
+              "2.1.1 Provide your organization’s overview and differentiators.",
+              "2.1.2 Explain your execution approach in detail."
             ]
+          }}
         }}
-        }}
-
-        Important rules:
-        - Cover every section that requests input (Scope, Proposal Requirements, Submission, Response Format, etc.).
-        - Do not skip or summarize — extract each question/prompt fully.
-        - Do not create or infer new questions that are not in the text.
-        - Do not include any Markdown symbols (#, *, -, >).
-        - The output must be **valid JSON only**.
 
         RFP Document Text:
         \"\"\"
         {pdf_text}
         \"\"\"
-        """
+    """
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
-                "content": "You are an expert assistant trained to extract structured, section-wise response prompts from RFP documents. Always return clean JSON with no extra formatting."
+                "content": (
+                    "You are an expert assistant trained to extract structured, "
+                    "section-wise response prompts from RFP documents. "
+                    "Always return clean JSON with no extra formatting. "
+                    "Never modify, summarize, or rephrase the RFP text."
+                ),
             },
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ],
-        temperature=0.1,
-        max_tokens=2000
+        temperature=0.0,  # enforce deterministic extraction
+        max_tokens=2000,
     )
 
     content = response.choices[0].message.content

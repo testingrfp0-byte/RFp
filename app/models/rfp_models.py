@@ -122,7 +122,7 @@ class Reviewer(Base):
 class ReviewerAnswerVersion(Base):
     __tablename__ = "reviewer_answer_versions"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True )
     user_id = Column(Integer, ForeignKey("users.id"))
     ques_id = Column(Integer, ForeignKey("rfp_questions.id"))
     answer = Column(Text)
@@ -151,12 +151,3 @@ class ReviewerAnswerVersion(Base):
             ondelete="CASCADE"
         ),
     )
-
-
-
-
-
-
-
-
-

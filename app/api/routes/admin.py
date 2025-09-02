@@ -22,9 +22,10 @@ import re
 
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-
+from app.db.database import Base ,engine
 
 router = APIRouter()
+Base.metadata.create_all(engine)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -121,7 +122,6 @@ async def search_related_summary(
         "total_questions": questions_grouped
     }
 
-
 @router.get("/filedetails", response_model=List[FileDetails])
 def get_file_details(
     db: Session = Depends(get_db),
@@ -153,7 +153,7 @@ def get_file_details(
 @router.post("/upload-library")
 def upload_library(
     files: List[UploadFile] = File(...),
-    category: str = Form(...),
+    category:str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -536,12 +536,14 @@ def check(
             file_name = i.question_ref.rfp.filename if i.question_ref and i.question_ref.rfp else "Unknown"
 
             data.append({
+                "user_id": i.user_id,
                 "username": i.user.username,
                 "question_id": i.ques_id,
                 "question": i.question,
                 "answer": i.ans,
                 "status": i.submit_status,
                 "submitted_at": i.submitted_at,
+                "file_id": i.file_id,
                 "filename": file_name
             })
 

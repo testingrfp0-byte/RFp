@@ -32,14 +32,14 @@ def assigned_questions(db: Session, current_user: User):
                 "status": reviewer.status,
                 "assigned_at": question.assigned_at,
                 "is_submitted": reviewer.submit_status == "submitted" or reviewer.submitted_at is not None,
-                "answer_id": latest_answer.id if latest_answer else None
+                "answer_id": latest_answer.id if latest_answer else None,
+                "answer": latest_answer.answer if latest_answer else None
             })
 
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    
 def generate_answers_service(db: Session, current_user: User, question_id: int):
     try:
         assignment = (
@@ -100,12 +100,10 @@ def answer_versions(db: Session, current_user: User, question_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 def update_answer_service(db: Session, current_user: User, question_id: int, new_answer: str):
     try:
-        assignment = (
-            db.query(RFPQuestion, Reviewer)
-            .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
+        reviewer = (
+            db.query(Reviewer)
             .filter(
                 Reviewer.user_id == current_user.id,
                 Reviewer.ques_id == question_id
@@ -113,36 +111,42 @@ def update_answer_service(db: Session, current_user: User, question_id: int, new
             .first()
         )
 
-        if assignment is None:
+        if reviewer is None:
             raise HTTPException(status_code=403, detail="Question not assigned to current user")
 
-        question, reviewer = assignment
+        print('before submit', reviewer.ans)
 
         if reviewer.ans:
             version = ReviewerAnswerVersion(
                 user_id=current_user.id,
-                ques_id=question.id,
-                answer=reviewer.ans,
+                ques_id=reviewer.ques_id,
+                answer=new_answer,
             )
+            
             db.add(version)
+
+        # reviewer.ans = new_answer
+        db.commit()     
+        db.refresh(version)
 
         reviewer.ans = new_answer
 
         db.commit()
         db.refresh(reviewer)
 
+        print('after submit', reviewer.ans)
+
         return {
             "message": "Answer has been updated successfully.",
-            "question_id": question.id,
-            "current_answer": reviewer.ans 
+            "question_id": reviewer.ques_id,
+            "current_answer": reviewer.ans
         }
 
-    except HTTPException as http_exc:
-        raise http_exc
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def submit_service(db: Session, current_user: User, question_id: int, status: str,):
     try:
