@@ -1228,12 +1228,16 @@ def regenerate_answer_with_chat(
     base_answer = reviewer.ans or ""
 
     system_prompt = (
-        "You are a senior proposal writer. "
-        "Refine and regenerate the proposal answer based on the user’s feedback. "
-        "Preserve structure, make it professional, and incorporate requested changes. "
-        "Do not use markdown symbols like ** or ## in the response."
-        "Do not include or repeat the question text in your response. "
-    )
+    "You are a senior proposal writer"
+    "Your task is to refine and regenerate proposal answers based on the user’s feedback. "
+    "Preserve the original structure and intent, but improve clarity, flow, and professionalism. "
+    "Incorporate all requested changes accurately and consistently. "
+    "Ensure the writing style is formal, persuasive, and suitable for RFP submissions. "
+    "Do not include or repeat the original question text. "
+    "Do not use markdown symbols, headings, or special formatting; produce plain text only. "
+    "Avoid redundancy and ensure the final output reads as a polished, client-ready response."
+)
+
 
     user_prompt = f"""
     Question: {question.question_text}
@@ -1248,47 +1252,37 @@ def regenerate_answer_with_chat(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.7,
+        temperature=0.3,
     )
 
     refined_answer = response.choices[0].message.content.strip()
 
     refined_answer = re.sub(r"(\*\*|##+)", "", refined_answer)
 
-    if not reviewer.ans:  
-        reviewer.ans = refined_answer
-        db.commit()
-        return {
-            "status": "success",
-            "message": "First answer generated and stored",
+    new_version = ReviewerAnswerVersion(
+        user_id=user_id,
+        ques_id=ques_id,
+        answer=refined_answer,
+        generated_at=datetime.utcnow()
+    )
+    db.add(new_version)
+
+    reviewer.ans = refined_answer
+    db.commit()
+    db.refresh(new_version)
+
+    return {
+        "status": "success",
+        "message": "Answer generated and stored in versions",
+        "new_answer_version": {
+            "id": new_version.id,
+            "ques_id": ques_id,
+            "user_id": user_id,
             "answer": refined_answer,
-            "source": "Reviewer.ans"
+            "generated_at": new_version.generated_at,
         }
-    else:
-        new_version = ReviewerAnswerVersion(
-            user_id=user_id,
-            ques_id=ques_id,
-            answer=refined_answer,
-            generated_at=datetime.utcnow()
-        )
-        db.add(new_version)
-        reviewer.ans = refined_answer
-        db.commit()
-        db.refresh(new_version)
-
-        return {
-            "status": "success",
-            "message": "Answer refined and stored as new version",
-            "new_answer_version": {
-                "id": new_version.id,
-                "ques_id": ques_id,
-                "user_id": user_id,
-                "answer": refined_answer,
-                "generated_at": new_version.generated_at,
-            }
-        }
-    
-
+    }
+  
 @router.post("/reassign")
 async def reassign_reviewer(
     request: ReassignReviewerRequest,

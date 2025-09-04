@@ -104,52 +104,65 @@ def extract_company_background_from_rfp(rfp_text: str) -> str:
     prompt = f"""
         You are an expert RFP analyst.
 
-        From the provided RFP text, extract **exactly three sections** in the specified order.
-        Do not summarize — copy the original wording wherever possible, merging sentences if needed.
-        NEVER place submission deadlines, contact details, or proposal instructions in Section 1 or Section 2.
+        Your task is to extract and organize information from the provided RFP text into exactly **three sections**, preserving the original wording wherever possible.  
 
-        ### Section 1: Purpose of the RFP
-        - Explain why this RFP was issued.
-        - Include all stated and implied goals.
-        - Mention stakeholders or departments involved.
-        - Include timelines, deliverables, or strategic drivers ONLY if related to the purpose — NOT submission deadlines.
-
-        ### Section 2: Company Background
-        - Include all background details about the issuing organization from across the document:
-        - Company name
-        - History and founding year
-        - Locations and service areas
-        - Size, ownership, or affiliations
-        - Products, services, and solutions
-        - Industry sectors served
-        - Mission, vision, values
-        - Awards, recognition, partnerships, major clients
-        - Any strategic initiatives or expansions
-        - No submission instructions or deadlines here.
-
-        ### Section 3: Submission Details & Requirements
-        - Copy verbatim all details about:
-        - Submission due date and time
-        - Deadline for submitting questions
-        - Names, emails, and phone numbers for submission or questions
-        - Submission method (email, portal, etc.)
-        - Proposal format, structure, or mandatory contents
-        - Eligibility criteria
-        - Compliance or certification requirements
-        - Any required attachments or forms
-        
-        -not include the repeated the headings 
-
+         **General Rules**
+        - DO copy text verbatim whenever possible. Only merge sentences if needed for readability.  
+        - DO capture *every relevant item* across the full RFP — even if details appear scattered in multiple sections.  
+        - DO consolidate related information into the correct section.  
+        - DO include stakeholder names, budgets, goals, and priorities in context.  
+        - DO NOT add, infer, or hallucinate information.  
+        - DO NOT omit details.  
+        - DO NOT duplicate section headings from the RFP itself.  
+        - DO NOT place submission deadlines, addresses, or instructions in Section 1 or Section 2.  
 
         ---
-        Section 1: Purpose of the RFP
-        [content]
 
-        Section 2: Company Background
-        [content]
+        ### Section 1: Purpose of the RFP
+        - Extract the stated purpose and intent of issuing the RFP.  
+        - Include goals, objectives, and desired outcomes.  
+        - Capture stakeholders, sponsoring departments, or partner organizations.  
+        - Mention scope of services, strategic drivers, or future plans *only if tied to purpose*.  
+        - Exclude submission deadlines, contacts, or proposal instructions.  
 
-        Section 3: Submission Details & Requirements
-        [content]
+        ### Section 2: Company Background
+        - Extract **all organizational background** about the issuer. This may appear in multiple parts of the RFP.  
+        - Include details such as:
+        - Full name of issuing organization (legal name if provided).  
+        - Location(s): headquarters, offices, or areas served.  
+        - Organizational type (public, private, nonprofit, government).  
+        - History, mission, vision, or strategic priorities.  
+        - Size, funding levels, budgets, or resources mentioned.  
+        - Services, programs, or industries the organization supports.  
+        - Partnerships, stakeholders, or governance structures.  
+        - Diversity, equity, or inclusion priorities (if stated).  
+        - Consolidate into clear narrative paragraphs.  
+        - Exclude submission instructions, requirements, or deadlines.  
+
+        ### Section 3: Submission Details & Requirements
+        - Copy verbatim **all procedural and compliance requirements**, including:  
+        - Submission deadlines, times, and locations.  
+        - Where and how to submit (mail, email, portal, hard copy, flash drive, etc.).  
+        - Contacts for submission or questions (names, titles, phone, email).  
+        - Proposal format, length limits, structure, required attachments/forms.  
+        - Eligibility, compliance, or certification requirements.  
+        - Contract terms, evaluation criteria, or selection process details.  
+        - If requirements appear in multiple parts of the RFP, merge them into one complete section.  
+
+        ---
+
+         **Output Format:**
+        Return the extracted content in the following exact structure:
+
+        Section 1: Purpose of the RFP  
+        [content]  
+
+        Section 2: Company Background  
+        [content]  
+
+        Section 3: Submission Details & Requirements  
+        [content]  
+
         ---
 
         RFP Text:
@@ -158,6 +171,7 @@ def extract_company_background_from_rfp(rfp_text: str) -> str:
         \"\"\"
         """
 
+
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -165,7 +179,7 @@ def extract_company_background_from_rfp(rfp_text: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.2,
-        max_tokens=2000
+        max_tokens=2200
     )
 
     return response.choices[0].message.content.strip()
@@ -184,14 +198,27 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
     prompt = f"""
         You are a senior strategy consultant preparing a formal RFP analysis brief.
         
-        Critical formatting & content rules:
-        - Produce exactly 3 sections in the order below.
-        - Insert a blank line between paragraphs for readability.
-        - In Section 3, extract *all* requirements and details from the RFP, even if they appear in multiple places.
-        - Section 3 must be presented as a bullet list with each requirement on its own line.
-        - Do not paraphrase or omit submission requirements — quote or restate them faithfully.
-        - Do not place deadlines or contacts in Section 1; only in Section 3.
-
+        Critical Formatting & Content Rules:
+        - Produce exactly three sections in the order specified: Purpose of the RFP, Company          Background, and Submission Details & Requirements.
+        - Insert a blank line between paragraphs in Sections 1 and 2 for readability.
+        - In Section 3, extract **all** submission-related details and requirements from the RFP, even if scattered across multiple sections or repeated.
+        - Present Section 3 as a bullet list, with each requirement or detail on its own line, quoted or restated verbatim to preserve the original wording and intent.
+        - Do not paraphrase, summarize, or omit any submission requirements in Section 3.
+        - Exclude submission deadlines, contact details, or procedural instructions from Section 1 and Section 2.
+        - Use information from web snippets to enhance Section 2 (Company Background) only if it is verified, relevant, and complements the RFP content.
+        - If information is missing for any section, include a note stating: "No relevant information provided in the RFP or web snippets."
+        - If conflicting information exists (e.g., between RFP and snippets), prioritize RFP data and note discrepancies in Section 2 (e.g., "Web snippets suggest [X], but RFP states [Y]").
+        - Ensure the output is professional, concise, and avoids redundancy while maintaining all required details
+        
+        
+        Do Not:
+        - Include submission deadlines, contact details, or procedural instructions in Section 1 or Section 2.
+        - Paraphrase or modify submission requirements in Section 3; use exact wording or faithful restatements.
+        - Introduce speculative or unverified information not present in the RFP or web snippets.
+        - Use Markdown or other formatting (e.g., bold, asterisks) in the output; use plain text with the exact section headings provided.
+        - Repeat section headings within the extracted content.
+        
+        
         ---
         **Section 1: Purpose of the RFP**
         [Full paragraph explanation of why the RFP was issued, its goals, scope, and strategic drivers.
@@ -233,8 +260,8 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
             },
             {"role": "user", "content": prompt},
         ],
-        temperature=0.3,
-        max_tokens=2000,
+        temperature=0.2,
+        max_tokens=2200,
     )
 
     return response.choices[0].message.content.strip()
@@ -242,54 +269,84 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
 
 def extract_questions_with_llm(pdf_text: str) -> dict:
     prompt = f"""
-        You are a professional RFP analysis assistant.
+    You are a professional RFP analysis assistant with expertise in extracting precise information from complex documents.
 
-        Task:
-        Extract every **question, instruction, or prompt** from the RFP text that requires a vendor response. 
+    Task:
+    Extract every **question, instruction, or prompt** from the RFP text that explicitly requires a vendor response. Each extracted item must be a verbatim question or directive as written in the RFP.
 
-         Do not:
-        - Summarize, rewrite, shorten, or change the wording.
-        - Add or infer questions that are not explicitly in the RFP.
-        - Include context-only text (Introductions, Needs Statements, Goals, Overviews).
-        -do not include the unnecessary questions like 'response submitted at '
+    Do not:
+    - Summarize, rewrite, shorten, or modify the wording of any question or instruction.
+    - Infer or add questions that are not explicitly stated in the RFP text.
+    - Include context-only text, such as introductions, needs statements, goals, background information, or overviews, unless they contain an explicit question or instruction requiring a response.
+    - Include requests for references, such as "Provide three references," "List client references," "Include customer references," "Conflicts of Interest," or "Marketing Services Team."
+    - Include administrative or procedural instructions, such as "Response must be submitted by [date]," "Submit via email," or "Include a cover letter."
+    - Include vague or rhetorical questions that do not clearly require a vendor response (e.g., "Why is this important?").
 
-        Not:
-        - not include the unnecessary question like must be submitted via e-mail,
+    Do:
+    - Extract each question or instruction **exactly as written** in the RFP (verbatim), preserving all punctuation, capitalization, and formatting.
+    - Preserve the section hierarchy and numbering as they appear in the RFP.
+    - Number questions sequentially within each section, extending the section's numbering format:
+        * For a section like "1.2 Proposal Requirements," number questions as "1.2.1", "1.2.2", etc.
+        * For Roman numeral sections like "III.A," number questions as "III.A.1", "III.A.2", etc.
+        * For sections like "I," number questions as "I.1", "I.2", etc.
+    - Restart question numbering (starting from 1) within each new section.
+    - Group questions by their respective section heading and number, exactly as provided in the RFP.
+    - Always prefix each question with its full section-based number (e.g., "1.2.1" or "III.A.1").
+    - If a section contains no questions or instructions requiring a response, do not include it in the output.
+    - Handle nested sections correctly, preserving the exact numbering format (e.g., "1.2.3.1" if the RFP uses such a format).
+    - If the RFP uses bullet points, tables, or other formatting for questions, extract the text of each question or instruction as a single string, ignoring formatting unless it impacts the question's meaning.
 
-         Do:
-        - Capture each item **exactly as written** in the RFP (verbatim).
-        - Preserve section hierarchy and numbering.
-        - If a section is "1.2 Proposal Requirements", the questions must be numbered "1.2.1", "1.2.2", etc.
-        - Restart question numbering inside each section.
-        - Group questions by section heading/number.
-        - Always prefix questions with their section number.
+    Edge Cases:
+    - If a section contains a mix of questions and non-questions, only extract the explicit questions or instructions requiring a response.
+    - If a question is phrased as a statement but implies a response (e.g., "The vendor shall provide a detailed implementation plan"), treat it as an instruction requiring a response.
+    - If the RFP uses inconsistent numbering or formatting, follow the most logical interpretation of the hierarchy while preserving the original section titles and numbers.
+    - If no section headings or numbers are provided, group questions under a default section labeled "General Questions" with numbering like "G.1", "G.2", etc.
 
-        Output format:
-        Strict JSON only, no Markdown or commentary.
+    Output Format:
+    Return a strict JSON object, with no Markdown, commentary, or additional text. The JSON should group questions by section, with each section identified by a unique key (starting from "1" and incrementing sequentially). Each section object must contain:
+    - "section": The exact section title and number as written in the RFP (e.g., "1.1 Scope" or "III.A Technical Requirements").
+    - "questions": A list of verbatim questions or instructions, each prefixed with their section-based number.
 
-        Example:
-        {{
-          "1": {{
-            "section": "1.1 Scope",
-            "questions": [
-              "1.1.1 Define the brand's personality, values, mission, and vision.",
-              "1.1.2 Describe how you will create a marketing strategy for our product suite."
-            ]
-          }},
-          "2": {{
-            "section": "2.1 Proposal Requirements",
-            "questions": [
-              "2.1.1 Provide your organization’s overview and differentiators.",
-              "2.1.2 Explain your execution approach in detail."
-            ]
-          }}
-        }}
+    Example Output:
+    ```json
+    {{
+      "1": {{
+        "section": "1.1 Scope",
+        "questions": [
+          "1.1.1 Define the brand’s personality, values, mission, and vision.",
+          "1.1.2 Describe how you will create a marketing strategy for our product suite."
+        ]
+      }},
+      "2": {{
+        "section": "2.1 Proposal Requirements",
+        "questions": [
+          "2.1.1 Provide your organization’s overview and differentiators.",
+          "2.1.2 Explain your execution approach in detail."
+        ]
+      }},
+      "3": {{
+        "section": "I Purpose",
+        "questions": [
+          "I.1 Provide your organization’s overview and differentiators.",
+          "I.2 Explain your execution approach in detail."
+        ]
+      }},
+      "4": {{
+        "section": "III.A Technical Requirements",
+        "questions": [
+          "III.A.1 Describe your software architecture.",
+          "III.A.2 Explain your data security approach.",
+          "III.A.3 Provide details of your support model."
+        ]
+      }}
+    }}
 
-        RFP Document Text:
-        \"\"\"
-        {pdf_text}
-        \"\"\"
-    """
+    RFP Document Text:
+    \"\"\"
+    {pdf_text}
+    \"\"\"
+"""
+
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -305,7 +362,7 @@ def extract_questions_with_llm(pdf_text: str) -> dict:
             },
             {"role": "user", "content": prompt},
         ],
-        temperature=0.0,  # enforce deterministic extraction
+        temperature=0.0,  
         max_tokens=2000,
     )
 

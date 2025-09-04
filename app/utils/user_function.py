@@ -24,6 +24,7 @@ def assigned_questions(db: Session, current_user: User):
             )
 
             results.append({
+                "user_id": reviewer.user_id, 
                 "rfp_id": question.rfp_id,
                 "filename": question.rfp.filename,
                 "question_id": question.id,
@@ -114,7 +115,7 @@ def update_answer_service(db: Session, current_user: User, question_id: int, new
         if reviewer is None:
             raise HTTPException(status_code=403, detail="Question not assigned to current user")
 
-        print('before submit', reviewer.ans)
+        # print('before submit', reviewer.ans)
 
         if reviewer.ans:
             version = ReviewerAnswerVersion(
@@ -134,7 +135,7 @@ def update_answer_service(db: Session, current_user: User, question_id: int, new
         db.commit()
         db.refresh(reviewer)
 
-        print('after submit', reviewer.ans)
+        # print('after submit', reviewer.ans)
 
         return {
             "message": "Answer has been updated successfully.",

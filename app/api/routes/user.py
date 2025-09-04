@@ -9,7 +9,6 @@ from app.utils.user_function import answer_versions,assigned_questions,generate_
 
 from app.schemas.schema import UpdateAnswerRequest
 
-
 router = APIRouter()
 
 @router.get("/assigned-questions")
