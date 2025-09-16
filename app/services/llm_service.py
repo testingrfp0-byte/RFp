@@ -8,8 +8,9 @@ from passlib.context import CryptContext
 from pinecone import Pinecone
 from app.models.rfp_models import User
 import re
-
-
+import docx
+from pptx import Presentation
+from PyPDF2 import PdfReader
 
 
 load_dotenv()
@@ -18,6 +19,7 @@ SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 index = pc.Index(os.getenv("PINECONE_INDEX"))
+index_ringer = pc.Index(os.getenv("PINECONE_INDEX_RINGER"))
 
 def extract_text_from_pdf(pdf_file: bytes) -> str:
     text = ""
@@ -389,20 +391,40 @@ def hash_password(password):
     return pwd_context.hash(password)
 
 
-def get_similar_context(question: str, top_k: int = 5) -> str:
+def get_similar_context(question: str, top_k: int = 5):
     embedding = client.embeddings.create(
         input=[question],
-        model="text-embedding-ada-002"
+        model="text-embedding-3-small" 
     ).data[0].embedding
 
-    results = index.query(vector=embedding, top_k=top_k, include_metadata=True)
-
+    results = index.query(
+        vector=embedding,
+        top_k=top_k,
+        include_metadata=True
+    )
     contexts = [match['metadata']['text'] for match in results['matches']]
-    return "\n".join(contexts)
+    sources = [
+        {
+            "score": match["score"],
+            "document_id": match["metadata"].get("document_id"),
+            "filename": match["metadata"].get("filename"),
+            "category": match["metadata"].get("category"),
+            "snippet": match["metadata"].get("text")
+        }
+        for match in results["matches"]
+    ]
+    return "\n".join(contexts), sources 
 
 def generate_answer_with_context(question: str, context: str) -> str:
-    prompt = f"""Answer the following question based only on the context below:\n\nContext:\n{context}\n\nQuestion: {question}\nAnswer:"""
+    prompt = f"""
+    Answer the following question based only on the context below:
 
+    Context:
+    {context}
+
+    Question: {question}
+    Answer:
+    """
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -410,28 +432,26 @@ def generate_answer_with_context(question: str, context: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.2,
-        max_tokens=500
+        max_tokens=800
     )
-
     return response.choices[0].message.content.strip()
 
 
 def query_vector_db(question: str, top_k=8):
     """
-    Query the vector database for relevant context.
+    Query the ringerinfo vector database for relevant context.
     """
     emb = client.embeddings.create(
         model="text-embedding-3-small",
         input=question
     ).data[0].embedding
 
-    results = index.query(
+    results = index_ringer.query(
         vector=emb,
         top_k=top_k,
         include_metadata=True
     )
     return [match['metadata']['text'] for match in results['matches']]
-
 
 
 def build_company_background_prompt(company_context: list[str]) -> str:
@@ -646,7 +666,30 @@ def summarize_company_background(company_name: str, context_chunks: list[str]) -
     return resp.choices[0].message.content.strip()
 
 
+def extract_text_from_file(file_path: str) -> str:
+    ext = os.path.splitext(file_path)[1].lower()
+    text = ""
 
+    if ext == ".pdf":
+        reader = PdfReader(file_path)
+        text = " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
+    elif ext == ".docx":
+        doc = docx.Document(file_path)
+        text = " ".join([p.text for p in doc.paragraphs])
+    elif ext == ".pptx":
+        prs = Presentation(file_path)
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text += shape.text + " "
+    return text.strip()
+
+def get_embedding(text: str):
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    )
+    return response.data[0].embedding
 
 
 

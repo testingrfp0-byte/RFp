@@ -11,6 +11,7 @@ class user_register(BaseModel):
     email: str
     password: str
     role:str
+    mode: Optional[str] = None
 
 class UserOut(BaseModel):
     user_id:int

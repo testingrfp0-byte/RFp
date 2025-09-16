@@ -14,7 +14,6 @@ import os
 import re
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
 SECRET_KEY = "narscbjim@$@&^@&%^&RFghgjvbdsha"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
@@ -99,3 +98,4 @@ def clean_answer(text: str) -> str:
     text = re.sub(r'[#*`]+', '', text)
     text = re.sub(r'\s+', ' ', text).strip()  
     return text
+

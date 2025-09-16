@@ -22,7 +22,7 @@ def get_assigned_questions(
 def generate_answers(
     question_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user) 
 ):
     return generate_answers_service(db, current_user, question_id)
 

@@ -32,6 +32,7 @@ def assigned_questions(db: Session, current_user: User):
                 "section": question.section,
                 "status": reviewer.status,
                 "assigned_at": question.assigned_at,
+                "submit_status": reviewer.submit_status,
                 "is_submitted": reviewer.submit_status == "submitted" or reviewer.submitted_at is not None,
                 "answer_id": latest_answer.id if latest_answer else None,
                 "answer": latest_answer.answer if latest_answer else None
@@ -57,8 +58,10 @@ def generate_answers_service(db: Session, current_user: User, question_id: int):
             raise HTTPException(status_code=403, detail="Question not assigned to current user")
 
         question, reviewer = assignment
-        context = get_similar_context(question.question_text)
-        answer = generate_answer_with_context(question.question_text, context)
+
+        contexts, sources = get_similar_context(question.question_text)
+
+        answer = generate_answer_with_context(question.question_text, contexts)
         answer = clean_answer(answer)
 
         version = ReviewerAnswerVersion(
@@ -73,7 +76,8 @@ def generate_answers_service(db: Session, current_user: User, question_id: int):
         return {
             "question_id": question.id,
             "question_text": question.question_text,
-            "answer": answer
+            "answer": answer,
+            "sources": sources 
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -220,7 +224,7 @@ def filter_service(db: Session, current_user: User,status: str):
 
         if status not in valid_statuses:
             raise HTTPException(status_code=400, detail="Invalid status. Must be one of: submitted, not submitted, process.")
-
+        
         reviewers = db.query(Reviewer).filter(
             Reviewer.user_id == current_user.id
         ).all()
