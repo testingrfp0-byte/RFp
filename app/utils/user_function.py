@@ -64,6 +64,7 @@ def generate_answers_service(db: Session, current_user: User, question_id: int):
         answer = generate_answer_with_context(question.question_text, contexts)
         answer = clean_answer(answer)
 
+
         version = ReviewerAnswerVersion(
             user_id=current_user.id,
             ques_id=question_id,

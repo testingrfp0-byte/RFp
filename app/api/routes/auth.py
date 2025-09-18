@@ -6,7 +6,7 @@ from app.models.rfp_models import User
 from app.db.database import get_db
 from app.api.routes.utils import create_access_token
 from app.services.llm_service import verify_password
-from app.schemas.schema import ForgotPasswordRequest,ResetPasswordRequest,ChangePasswordRequest,VerifyOtpRequest,LoginRequest
+from app.schemas.schema import ForgotPasswordRequest,ResetPasswordRequest,ChangePasswordRequest,VerifyOtpRequest,LoginRequest,PasswordUpdateRequest
 from app.api.routes.utils import BackgroundTasks,generate_otp,send_email
 from datetime import datetime, timedelta
 from app.api.routes.utils import get_current_user
@@ -118,17 +118,21 @@ def register(
         db.refresh(user)
 
         if request.mode == "add":
-            verification_url = f"https://inspiring-sunburst-3954ce.netlify.app/verify-email?otp={otp}&email={user.email}"
+            verification_url = (
+                f"https://inspiring-sunburst-3954ce.netlify.app/verify-email"
+                f"?otp={otp}&email={user.email}&password={request.password}&role={request.role}"
+            )
             background_tasks.add_task(
                 send_email,
                 to_email=user.email,
                 subject="Verify Your Email",
                 body=f"Hi {user.username},\n\n"
-                     f"Please click the link below to verify your email (valid for 10 minutes):\n\n"
-                     f"{verification_url}\n\n"
-                     f"If you did not request this, please ignore."
+                    f"Please click the link below to verify your email (valid for 10 minutes):\n\n"
+                    f"{verification_url}\n\n"
+                    f"If you did not request this, please ignore."
             )
             return {"message": "User registered successfully. Verification link sent to email."}
+
         else:
             background_tasks.add_task(
                 send_email,
@@ -141,14 +145,29 @@ def register(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/verify-email")
+def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db)):
+    try:
+        user = db.query(User).filter(User.email == email).first()
 
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
+        if user.is_verified:
+            return {"message": "Email already verified"}
 
+        if user.reset_otp != otp or user.otp_expiry < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="Invalid or expired verification link")
 
+        user.role = role  
+        user.is_verified = True
+        user.reset_otp = None
+        user.otp_expiry = None
+        db.commit()
 
-
-
-
+        return {"message": "Email verified successfully", "role": user.role}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/verify_otp")
 def verify_otp(request: VerifyOtpRequest, db: Session = Depends(get_db)):
@@ -294,5 +313,29 @@ def change_password(
         db.refresh(current_user)
 
         return {"message": "Password changed successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/update-password")
+def update_password(request: PasswordUpdateRequest, db: Session = Depends(get_db)):
+    try:
+        user = db.query(User).filter(User.email == request.email).first()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        if not verify_password(request.old_password, user.password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Old password is incorrect"
+            )
+
+        user.password = hash_password(request.new_password)
+        db.commit()
+
+        return {"message": "Password updated successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

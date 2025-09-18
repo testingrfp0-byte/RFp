@@ -145,7 +145,10 @@ class ReassignReviewerRequest(BaseModel):
     ques_id: int
     file_id: int
 
-
+class PasswordUpdateRequest(BaseModel):
+    email: str
+    old_password: str
+    new_password: str
 
 
 

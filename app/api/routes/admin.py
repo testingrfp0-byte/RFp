@@ -639,3 +639,190 @@ async def reassign_reviewer(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
+
+
+
+# ------------------------------------------
+# for test the endpoint 
+from pinecone import Pinecone, ServerlessSpec
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_ENV = os.getenv("PINECONE_ENV")   # e.g. aws-us-east-1
+PINECONE_INDEX = os.getenv("PINECONE_INDEX", "kb-index")
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+
+
+
+
+if PINECONE_INDEX not in pc.list_indexes().names():
+    pc.create_index(
+        name=PINECONE_INDEX,
+        dimension=1536, 
+        metric="cosine",
+        spec=ServerlessSpec(
+            cloud="aws",
+            region="us-east-1" 
+        )
+    )
+
+index = pc.Index(PINECONE_INDEX)
+
+
+
+
+
+
+
+
+
+
+def extract_text_from_file(file_path: str) -> str:
+    """Extract text from PDF/DOCX/PPTX. 
+       Replace with your actual implementation."""
+    if file_path.endswith(".pdf"):
+        from PyPDF2 import PdfReader
+        reader = PdfReader(file_path)
+        return " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
+    # TODO: Add docx, pptx extraction
+    return ""
+
+
+def get_embedding(text: str) -> list:
+    """Generate embeddings for a text string."""
+    resp = client.embeddings.create(model="text-embedding-3-small", input=[text])
+    return resp.data[0].embedding
+
+
+def generate_summary(text: str) -> str:
+    """Generate summary of an RFP using LLM."""
+    prompt = f"Summarize the following RFP in 3–5 paragraphs:\n\n{text[:8000]}"
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are an RFP summarizer."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content.strip()
+
+
+# ----------- API Route -----------
+
+@router.post("/upload-library-new")
+def upload_library(
+    files: List[UploadFile] = File(...),
+    category: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Only admins can upload library documents."
+        )
+
+    try:
+        uploaded_docs = []
+
+        for file in files:
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            if file_ext not in [".pdf", ".docx", ".pptx"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file format: {file.filename}"
+                )
+
+            # Save file locally
+            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            saved_filename = f"{timestamp}_{file.filename}"
+            file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
+
+            with open(file_path, "wb") as f:
+                f.write(file.file.read())
+
+            # Save metadata in DB
+            new_doc = RFPDocument(
+                filename=file.filename,
+                file_path=file_path,
+                category=category,
+                admin_id=current_user.id,
+                uploaded_at=datetime.utcnow()
+            )
+            db.add(new_doc)
+            db.commit()
+            db.refresh(new_doc)
+
+            # Extract text
+            text = extract_text_from_file(file_path)
+            if not text:
+                continue
+
+            # ---- (A) Store Summary in Pinecone ----
+            summary = generate_summary(text)
+            summary_vector = get_embedding(summary)
+
+            index.upsert(
+                vectors=[(
+                    f"summary_{new_doc.id}",
+                    summary_vector,
+                    {
+                        "document_id": str(new_doc.id),
+                        "filename": new_doc.filename,
+                        "category": new_doc.category,
+                        "type": "summary",
+                        "text": summary
+                    }
+                )],
+                namespace="summaries"
+            )
+
+            # ---- (B) Store Chunks in Pinecone ----
+            splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+            chunks = splitter.split_text(text)
+
+            vectors = []
+            for i, chunk in enumerate(chunks):
+                vector = get_embedding(chunk)
+                vectors.append((
+                    f"{new_doc.id}_{i}",
+                    vector,
+                    {
+                        "document_id": str(new_doc.id),
+                        "filename": new_doc.filename,
+                        "category": new_doc.category,
+                        "type": "chunk",
+                        "chunk_id": i,
+                        "text": chunk
+                    }
+                ))
+
+            if vectors:
+                index.upsert(vectors, namespace=f"rfp_{new_doc.id}")
+
+            uploaded_docs.append({
+                "document_id": new_doc.id,
+                "filename": new_doc.filename,
+                "category": new_doc.category
+            })
+
+        return {
+            "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
+            "documents": uploaded_docs
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+

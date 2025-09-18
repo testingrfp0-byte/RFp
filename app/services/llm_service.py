@@ -390,32 +390,81 @@ def verify_password(plain_password, hashed_password):
 def hash_password(password):
     return pwd_context.hash(password)
 
+#yeah running code hai 
+# def get_similar_context(question: str, top_k: int = 5):
+#     embedding = client.embeddings.create(
+#         input=[question],
+#         model="text-embedding-3-small" 
+#     ).data[0].embedding
 
+#     results = index.query(
+#         vector=embedding,
+#         top_k=top_k,
+#         include_metadata=True
+#     )
+#     contexts = [match['metadata']['text'] for match in results['matches']]
+#     sources = [
+#         {
+#             "score": match["score"],
+#             "document_id": match["metadata"].get("document_id"),
+#             "filename": match["metadata"].get("filename"),
+#             "category": match["metadata"].get("category"),
+#             "snippet": match["metadata"].get("text")
+#         }
+#         for match in results["matches"]
+#     ]
+#     return "\n".join(contexts), sources 
+
+#yeah new add kiya hu 
 def get_similar_context(question: str, top_k: int = 5):
+    """
+    Retrieve both summaries and detailed chunks from Pinecone for Hybrid KB.
+    Returns combined context and sources.
+    """
+    # Embed the question
     embedding = client.embeddings.create(
         input=[question],
-        model="text-embedding-3-small" 
+        model="text-embedding-3-small"  
     ).data[0].embedding
 
     results = index.query(
         vector=embedding,
-        top_k=top_k,
+        top_k=top_k * 2, 
         include_metadata=True
     )
-    contexts = [match['metadata']['text'] for match in results['matches']]
+
+    summaries = []
+    chunks = []
+    for match in results["matches"]:
+        if match["metadata"].get("type") == "summary":
+            summaries.append(match)
+        else:
+            chunks.append(match)
+
+    summaries = summaries[:top_k]
+    chunks = chunks[:top_k]
+
+    context_texts = []
+    context_texts.extend([m["metadata"]["text"] for m in summaries])
+    context_texts.extend([m["metadata"]["text"] for m in chunks])
+
     sources = [
         {
             "score": match["score"],
             "document_id": match["metadata"].get("document_id"),
             "filename": match["metadata"].get("filename"),
             "category": match["metadata"].get("category"),
-            "snippet": match["metadata"].get("text")
+            "type": match["metadata"].get("type"),
+            "snippet": match["metadata"].get("text")[:300]  # limit snippet length
         }
-        for match in results["matches"]
+        for match in summaries + chunks
     ]
-    return "\n".join(contexts), sources 
 
-def generate_answer_with_context(question: str, context: str) -> str:
+    return "\n".join(context_texts), sources
+
+
+
+def generate_answer_with_context(question: str, context: str) -> str: 
     prompt = f"""
     Answer the following question based only on the context below:
 
