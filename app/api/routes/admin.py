@@ -33,6 +33,9 @@ from app.utils.admin_function import (
     update_profile_service, delete_reviewer_service,
     regenerate_answer_with_chat_service, reassign_reviewer_service
 )
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
 
 router = APIRouter()
 Base.metadata.create_all(engine)
@@ -345,6 +348,7 @@ GENERATED_FOLDER = "generated_docs"
 @router.post("/generate-rfp-doc/")
 async def generate_rfp_doc(
     rfp_id: int,
+    request: Request,   # <-- added for absolute URL
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -378,80 +382,7 @@ async def generate_rfp_doc(
 
     company_name = getattr(rfp_doc, "client_name", "Ringer")
 
-    company_context = query_vector_db(
-        f"All details about Ringer (services, past proposals, playbooks, SEO, social media, training, case studies, pricing, methodology)", 
-        top_k=8
-    )
-    bg_prompt = build_company_background_prompt(company_context)
-
-    bg_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": bg_prompt}],
-        temperature=0.3
-    )
-    company_background = bg_resp.choices[0].message.content.strip()
-
-    rfp_text = getattr(rfp_doc, "full_text", executive_summary)
-    case_studies = [cs.text for cs in getattr(rfp_doc, "case_studies", [])]
-
-    proposal_prompt = build_proposal_prompt(rfp_text, company_background, case_studies)
-
-    proposal_resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": proposal_prompt}],
-        temperature=0.4
-    )
-    full_proposal_text = proposal_resp.choices[0].message.content.strip()
-
-    qa_by_section = {}
-    for q in rfp_doc.questions:
-        reviewer_answer = next(
-            (rev for rev in q.reviewers if rev.submit_status == "submitted"), 
-            None
-        )
-
-        if reviewer_answer:
-            answer_text = reviewer_answer.ans
-        elif q.answer_versions:
-            latest_version = sorted(q.answer_versions, key=lambda v: v.generated_at)[-1]
-            answer_text = latest_version.answer
-        else:
-            answer_text = "No answer submitted."
-
-        if q.section not in qa_by_section:
-            qa_by_section[q.section] = []
-        qa_by_section[q.section].append({"question": q.question_text, "answer": answer_text})
-
-    proposal_sections_text = ""
-    for section, qas in qa_by_section.items():
-        qa_text = "\n".join([f"Q: {qa['question']}\nA: {qa['answer']}" for qa in qas])
-
-        section_prompt = f"""
-        You are a proposal writer at Ringer.
-        Convert the following Q&A into a professional proposal narrative for the section: {section}.
-        Write it as if Ringer is presenting the proposal to the client — no questions, only polished answers.
-
-        --- Input Q&A ---
-        {qa_text}
-
-        --- Instructions ---
-        - Do not show "Q:" or "A:" in the output.
-        - Rewrite answers into flowing paragraphs.
-        - Maintain a persuasive, professional proposal tone.
-        - Combine related answers into one coherent narrative.
-        - Give concise and detailed solutions to the client.
-        """
-
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": section_prompt}],
-            temperature=0.4
-        )
-        section_text = resp.choices[0].message.content.strip()
-
-        proposal_sections_text += f"\n\n### {section}\n{section_text}"
-
-    # --- 4. Create DOCX with Logo + Headings ---
+    # --- Example: Build a Word doc ---
     doc = Document()
 
     # Cover Page
@@ -468,93 +399,74 @@ async def generate_rfp_doc(
     doc.add_paragraph(f"Client: {company_name}")
     doc.add_paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d')}")
 
-    # Executive Summary
-    # doc.add_page_break()
-    # doc.add_heading("Executive Summary", level=1)
-    # doc.add_paragraph(executive_summary)
-
-    # Company Background
+    # Example extra section
     doc.add_page_break()
-    doc.add_heading("Company Background & Capabilities", level=1)
-    doc.add_paragraph(company_background)
+    doc.add_heading("Executive Summary", level=1)
+    doc.add_paragraph(executive_summary)
 
-    # Strategic Approach
-    doc.add_page_break()
-    doc.add_heading("Strategic Approach", level=1)
-    doc.add_paragraph(
-        "Our methodology is designed to align with client objectives through "
-        "creative development, media strategy, SEO, compliance alignment, and "
-        "performance tracking. This approach ensures a phased and collaborative "
-        "plan where Ringer co-creates with stakeholders."
-    )
-
-    # Scope of Work
-    # doc.add_page_break()
-    # doc.add_heading("Scope of Work", level=1)
-    # doc.add_paragraph(full_proposal_text)
-
-    # Timeline
-    doc.add_page_break()
-    doc.add_heading("Timeline", level=1)
-    doc.add_paragraph(
-        "Based on Ringer’s proven frameworks, project delivery is divided into phases:\n\n"
-        "1. Discovery & Planning – 2-4 weeks\n"
-        "2. Development & Playbook Creation – 4-6 weeks\n"
-        "3. Launch & Activation – 6-8 weeks\n"
-        "4. Optimization & Reporting – ongoing monthly cycles\n\n"
-        "Exact timelines may vary depending on scope and client collaboration."
-    )
-
-    # Budget & Investment
-    doc.add_page_break()
-    doc.add_heading("Budget & Investment", level=1)
-    doc.add_paragraph(
-        "Ringer provides flexible investment ranges aligned to each service:\n\n"
-        "- Media Planning & Management: $10,000 – $15,000 (per 90-day cycle)\n"
-        "- Playbook Development: $10,000 – $12,000 (4–6 weeks)\n"
-        "- Social Media Consulting: $7,500 initial + ongoing hourly support\n"
-        "- SEO Playbook Development: $5,000+ (2–4 weeks)\n\n"
-        "Budgets are indicative and will be finalized upon discovery. "
-        "Our focus is always on delivering measurable ROI."
-    )
-
-    # Why Us
-    doc.add_page_break()
-    doc.add_heading("Why Us", level=1)
-    doc.add_paragraph(
-        "Ringer combines expertise in media planning, social media strategy, "
-        "SEO, training, and analytics. Our differentiators include:\n\n"
-        "- Proven success with leading retail and regulated industries\n"
-        "- Custom playbooks tailored to compliance needs\n"
-        "- Strategic workshops and ongoing leadership support\n"
-        "- Integrated reporting, analytics, and optimization frameworks\n\n"
-        "This unique mix positions Ringer as a trusted partner for scalable growth."
-    )
-
-    # Detailed Proposal Response (Q&A sections)
-    doc.add_page_break()
-    doc.add_heading("Detailed Proposal Response", level=1)
-    doc.add_paragraph(proposal_sections_text)
-
-    # Next Steps
-    doc.add_page_break()
-    doc.add_heading("Next Steps", level=1)
-    doc.add_paragraph(
-        "We recommend scheduling a discovery session to align on priorities, "
-        "finalize scope, and confirm timelines.\n\n"
-        "Please contact us at info@ringer.com to arrange the next discussion."
-    )
-
-    # Save File
+    # --- Save File ---
     os.makedirs(GENERATED_FOLDER, exist_ok=True)
     file_name = f"rfp_response_{rfp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.docx"
     file_path = os.path.join(GENERATED_FOLDER, file_name)
     doc.save(file_path)
 
+    # Build absolute download URL
+    base_url = str(request.base_url).rstrip("/")
+    download_url = f"{base_url}/download/{file_name}"
+
     return {
         "message": "RFP proposal generated successfully",
-        "download_url": f"/download/{file_name}"
+        "download_url": download_url
     }
+
+@router.get("/list-rfp-docs/")
+async def list_rfp_docs(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        if current_user.role.lower() != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized - only admins can access this endpoint"
+            )
+
+        if not os.path.exists(GENERATED_FOLDER):
+            return JSONResponse(content={
+                "message": "No documents found",
+                "role": current_user.role,
+                "docs": []
+            })
+
+        files = os.listdir(GENERATED_FOLDER)
+        files = [f for f in files if f.endswith(".docx") or f.endswith(".pdf")]
+
+        docs = []
+        for f in files:
+            docs.append({
+                "file_name": f,
+                "download_url": f"{request.base_url}download/{f}"
+            })
+
+        return {
+            "message": f"{len(docs)} document(s) found",
+            "role": current_user.role,
+            "docs": docs
+        }
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "An error occurred while listing documents",
+                "error": str(e),
+                "docs": []
+            }
+        )
+
 
 @router.patch("/admin/edit-answer")
 def edit_question_by_admin(

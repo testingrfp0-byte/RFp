@@ -15,12 +15,17 @@ app.add_middleware(
 )
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+GENERATED_FOLDER = os.path.join(BASE_DIR, "generated_docs")
 
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+if not os.path.exists(GENERATED_FOLDER): 
+    os.makedirs(GENERATED_FOLDER)
 
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+app.mount("/download", StaticFiles(directory=GENERATED_FOLDER), name="download")
 
 app.include_router(auth.router,tags=["Auth"])
 app.include_router(admin.router,tags=["Admin"])
