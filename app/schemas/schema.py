@@ -20,7 +20,7 @@ class UserOut(BaseModel):
     role: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class FileDetails(BaseModel):
     id: int
@@ -29,7 +29,7 @@ class FileDetails(BaseModel):
     uploaded_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CompanySummaryOut(BaseModel):
     summary_text: str
@@ -44,7 +44,7 @@ class RFPQuestionOut(BaseModel):
 
     class Config:
         from_attributes = True
-        allow_population_by_field_name = True
+        validate_by_name = True
 
 class RFPDocumentDetails(BaseModel):
     id: int
@@ -95,7 +95,7 @@ class AssignedQuestionOut(BaseModel):
     # assigned_at: Optional[datetime]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ReviewerOut(BaseModel):
     ques_id: int
