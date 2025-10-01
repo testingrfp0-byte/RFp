@@ -25,6 +25,7 @@ class UserOut(BaseModel):
 class FileDetails(BaseModel):
     id: int
     filename: str
+    project_name: str | None = None
     category: str | None
     uploaded_at: datetime
 

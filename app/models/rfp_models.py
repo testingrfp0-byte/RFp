@@ -15,6 +15,7 @@ class RFPDocument(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     admin_id = Column(Integer) 
     file_hash = Column(String, unique=True, nullable=False)
+    project_name = Column(String, nullable=True)
 
     summary = relationship(
         "CompanySummary",

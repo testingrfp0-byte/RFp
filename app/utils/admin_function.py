@@ -51,7 +51,7 @@ UPLOAD_FOLDER = "uploads"
 index = pc.Index(PINECONE_INDEX)
 LOGIN_URL = "https://inspiring-sunburst-3954ce.netlify.app"
 
-async def process_rfp_file(file: UploadFile, db: Session, current_user):
+async def process_rfp_file(file: UploadFile,project_name: str, db: Session, current_user):
     try:
         file_bytes = await file.read()
         file_hash = hashlib.md5(file_bytes).hexdigest()
@@ -98,7 +98,8 @@ async def process_rfp_file(file: UploadFile, db: Session, current_user):
             file_hash=file_hash,
             extracted_text=rfp_text,
             admin_id=current_user.id,
-            category="history"
+            category="history",
+            project_name=project_name
         )
         db.add(new_rfp)
         db.commit()
@@ -128,6 +129,7 @@ async def process_rfp_file(file: UploadFile, db: Session, current_user):
             "rfp_id": new_rfp.id,
             "saved_file": file_path,
             "category": new_rfp.category,
+            "project_name": project_name,
             "summary": structured_summary,
             "total_questions": questions_grouped
         }
@@ -609,6 +611,7 @@ def filter_question_service(rfp_id: int, db: Session, current_user: User):
         return {
             "rfp_id": rfp.id,
             "pdf_filename": rfp.filename,
+            "project_name": rfp.project_name,
             "total_questions": len(all_questions),
             "assigned_count": len(assigned_questions),
             "unassigned_count": len(unassigned_questions),

@@ -49,6 +49,7 @@ router.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
 @router.post("/search-related-summary/")
 async def search_related_summary(
     file: UploadFile = File(...),
+    project_name: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -58,7 +59,7 @@ async def search_related_summary(
             detail="Only admins can access summary docs."
         )
     
-    return await process_rfp_file(file, db, current_user)
+    return await process_rfp_file(file, project_name, db, current_user)
 
 @router.get("/filedetails", response_model=List[FileDetails])
 def get_file_details(
