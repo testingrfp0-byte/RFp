@@ -77,6 +77,7 @@ def get_file_details(
 @router.post("/upload-library")
 def upload_library(
     files: List[UploadFile] = File(...),
+    project_name: str = Form(...),
     category: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -87,7 +88,7 @@ def upload_library(
             detail="Only admins can upload library documents."
         )
     
-    return process_library_upload(files, category, db, current_user)
+    return process_library_upload(files,project_name, category, db, current_user)
 
 @router.get("/userdetails")
 def get_user(

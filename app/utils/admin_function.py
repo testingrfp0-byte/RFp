@@ -152,7 +152,7 @@ def fetch_file_details(db: Session):
             detail="An unexpected error occurred"
         )
 
-def process_library_upload(files: list[UploadFile], category: str, db: Session, current_user):
+def process_library_upload(files: list[UploadFile],project_name: str, category: str, db: Session, current_user):
     try:
         uploaded_docs = []
 
@@ -175,6 +175,7 @@ def process_library_upload(files: list[UploadFile], category: str, db: Session, 
                 filename=file.filename,
                 file_path=file_path,
                 category=category,
+                project_name=project_name,
                 admin_id=current_user.id,
                 uploaded_at=datetime.utcnow()
             )
@@ -209,7 +210,8 @@ def process_library_upload(files: list[UploadFile], category: str, db: Session, 
             uploaded_docs.append({
                 "document_id": new_doc.id,
                 "filename": new_doc.filename,
-                "category": new_doc.category
+                "category": new_doc.category,
+                "project_name": new_doc.project_name
             })
 
         return {
