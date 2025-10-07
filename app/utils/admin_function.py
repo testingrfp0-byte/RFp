@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from sqlalchemy.orm import Session, joinedload
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from sqlalchemy import func
 from pinecone import Pinecone, ServerlessSpec
 from app.config import mail_config
 from app.models.rfp_models import (
@@ -141,7 +142,7 @@ def fetch_file_details(db: Session):
         documents = (
             db.query(RFPDocument)
             .filter(RFPDocument.category.isnot(None))
-            .filter(RFPDocument.category != "")
+            .filter(func.trim(RFPDocument.category) != '')
             .all()
         )
         return documents
