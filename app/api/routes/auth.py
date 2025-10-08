@@ -16,59 +16,6 @@ from datetime import datetime, timedelta
 SESSION_COOKIE = "session_user"
 router = APIRouter()
 
-# @router.post("/register")
-# def register(request: user_register, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-#     try:
-#         existing_user = db.query(User).filter(User.email == request.email).first()
-
-#         if existing_user and existing_user.is_verified:
-#             raise HTTPException(
-#                 status_code=status.HTTP_409_CONFLICT,
-#                 detail="Email already registered"
-#             )
-        
-#         existing_username = db.query(User).filter(User.username == request.username.strip()).first()
-#         if existing_username and (not existing_user or existing_user.id != existing_username.id):
-#             raise HTTPException(
-#                 status_code=status.HTTP_409_CONFLICT,
-#                 detail="Username already exists"
-#             )
-#         otp = generate_otp()
-#         expiry_time = datetime.utcnow() + timedelta(minutes=10)
-
-#         if existing_user:
-#             existing_user.username = request.username.strip()
-#             existing_user.password = hash_password(request.password)
-#             existing_user.role = request.role
-#             existing_user.reset_otp = otp
-#             existing_user.otp_expiry = expiry_time
-#             existing_user.is_verified = True
-#             user = existing_user
-#         else:
-#             user = User(
-#                 username=request.username.strip(),
-#                 password=hash_password(request.password),
-#                 email=request.email.strip().lower(),
-#                 role=request.role,
-#                 reset_otp=otp,
-#                 otp_expiry=expiry_time,
-#                 is_verified=False
-#             )
-#             db.add(user)
-
-#         db.commit()
-#         db.refresh(user)
-
-#         background_tasks.add_task(
-#             send_email,
-#             to_email=user.email,
-#             subject="Email Verification One Time Password",
-#             body=f"Your One Time Password is {otp}. It will expire in 10 minutes."
-#         )
-
-#         return {"message": "User registered successfully. Please verify OTP sent to your email."}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
 @router.post("/register")
 def register(
     request: user_register,
@@ -206,6 +153,9 @@ def verify_otp(request: VerifyOtpRequest, db: Session = Depends(get_db)):
 def login(request: LoginRequest, db: Session = Depends(get_db)):
     try:
         user = db.query(User).filter(User.email == request.email.strip().lower()).first()
+
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
 
         if not user or not verify_password(request.password, user.password):
             raise HTTPException(status_code=401, detail="Invalid credentials")
