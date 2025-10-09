@@ -22,7 +22,7 @@ from app.services.llm_service import (
     build_company_background_prompt, build_proposal_prompt)
 from app.api.routes.utils import get_current_user
 from app.utils.admin_function import (
-    process_rfp_file, fetch_file_details, process_library_upload,
+    process_rfp_file, fetch_file_details,
     get_all_users, get_assigned_users,
     assign_multiple_review, get_reviewers_by_file_service,
     get_user_by_id_service, check_submissions_service,
@@ -74,21 +74,21 @@ def get_file_details(
     
     return fetch_file_details(db)
 
-@router.post("/upload-library")
-def upload_library(
-    files: List[UploadFile] = File(...),
-    project_name: str = Form(...),
-    category: str = Form(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    if current_user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Only admins can upload library documents."
-        )
+# @router.post("/upload-library")
+# def upload_library(
+#     files: List[UploadFile] = File(...),
+#     project_name: str = Form(...),
+#     category: str = Form(...),
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     if current_user.role != "admin":
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail="Only admins can upload library documents."
+#         )
     
-    return process_library_upload(files,project_name, category, db, current_user)
+#     return process_library_upload(files,project_name, category, db, current_user)
 
 @router.get("/userdetails")
 def get_user(
@@ -590,14 +590,6 @@ if PINECONE_INDEX not in pc.list_indexes().names():
 index = pc.Index(PINECONE_INDEX)
 
 
-
-
-
-
-
-
-
-
 def extract_text_from_file(file_path: str) -> str:
     """Extract text from PDF/DOCX/PPTX. 
        Replace with your actual implementation."""
@@ -630,20 +622,24 @@ def generate_summary(text: str) -> str:
 
 # ----------- API Route -----------
 
-@router.post("/upload-library-new")
-def upload_library(
+@router.post("/upload-library")
+def upload_library_new(
     files: List[UploadFile] = File(...),
+    project_name: str = Form(...),
     category: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role != "admin":
+    if current_user.role.lower() != "admin":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Only admins can upload library documents."
         )
 
     try:
+        UPLOAD_FOLDER = "uploads"
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
         uploaded_docs = []
 
         for file in files:
@@ -653,20 +649,19 @@ def upload_library(
                     status_code=400,
                     detail=f"Unsupported file format: {file.filename}"
                 )
-
-            # Save file locally
             timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
             saved_filename = f"{timestamp}_{file.filename}"
             file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
 
             with open(file_path, "wb") as f:
-                f.write(file.file.read())
+                import shutil
+                shutil.copyfileobj(file.file, f)
 
-            # Save metadata in DB
             new_doc = RFPDocument(
                 filename=file.filename,
                 file_path=file_path,
                 category=category,
+                project_name=project_name,
                 admin_id=current_user.id,
                 uploaded_at=datetime.utcnow()
             )
@@ -674,12 +669,10 @@ def upload_library(
             db.commit()
             db.refresh(new_doc)
 
-            # Extract text
             text = extract_text_from_file(file_path)
             if not text:
                 continue
 
-            # ---- (A) Store Summary in Pinecone ----
             summary = generate_summary(text)
             summary_vector = get_embedding(summary)
 
@@ -691,6 +684,7 @@ def upload_library(
                         "document_id": str(new_doc.id),
                         "filename": new_doc.filename,
                         "category": new_doc.category,
+                        "project_name": new_doc.project_name,
                         "type": "summary",
                         "text": summary
                     }
@@ -698,7 +692,6 @@ def upload_library(
                 namespace="summaries"
             )
 
-            # ---- (B) Store Chunks in Pinecone ----
             splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
             chunks = splitter.split_text(text)
 
@@ -712,6 +705,7 @@ def upload_library(
                         "document_id": str(new_doc.id),
                         "filename": new_doc.filename,
                         "category": new_doc.category,
+                        "project_name": new_doc.project_name,
                         "type": "chunk",
                         "chunk_id": i,
                         "text": chunk
@@ -719,12 +713,13 @@ def upload_library(
                 ))
 
             if vectors:
-                index.upsert(vectors, namespace=f"rfp_{new_doc.id}")
+                index.upsert(vectors=vectors, namespace=f"rfp_{new_doc.id}")
 
             uploaded_docs.append({
                 "document_id": new_doc.id,
                 "filename": new_doc.filename,
-                "category": new_doc.category
+                "category": new_doc.category,
+                "project_name": new_doc.project_name
             })
 
         return {
@@ -733,9 +728,9 @@ def upload_library(
         }
 
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
-
-

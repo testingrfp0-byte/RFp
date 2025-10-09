@@ -153,78 +153,78 @@ def fetch_file_details(db: Session):
             detail="An unexpected error occurred"
         )
 
-def process_library_upload(files: list[UploadFile],project_name: str, category: str, db: Session, current_user):
-    try:
-        uploaded_docs = []
+# def process_library_upload(files: list[UploadFile],project_name: str, category: str, db: Session, current_user):
+#     try:
+#         uploaded_docs = []
 
-        for file in files:
-            file_ext = os.path.splitext(file.filename)[1].lower()
-            if file_ext not in [".pdf", ".docx", ".pptx"]:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported file format: {file.filename}"
-                )
+#         for file in files:
+#             file_ext = os.path.splitext(file.filename)[1].lower()
+#             if file_ext not in [".pdf", ".docx", ".pptx"]:
+#                 raise HTTPException(
+#                     status_code=400,
+#                     detail=f"Unsupported file format: {file.filename}"
+#                 )
 
-            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-            saved_filename = f"{timestamp}_{file.filename}"
-            file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
+#             timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+#             saved_filename = f"{timestamp}_{file.filename}"
+#             file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
 
-            with open(file_path, "wb") as f:
-                f.write(file.file.read())
+#             with open(file_path, "wb") as f:
+#                 f.write(file.file.read())
 
-            new_doc = RFPDocument(
-                filename=file.filename,
-                file_path=file_path,
-                category=category,
-                project_name=project_name,
-                admin_id=current_user.id,
-                uploaded_at=datetime.utcnow()
-            )
-            db.add(new_doc)
-            db.commit()
-            db.refresh(new_doc)
+#             new_doc = RFPDocument(
+#                 filename=file.filename,
+#                 file_path=file_path,
+#                 category=category,
+#                 project_name=project_name,
+#                 admin_id=current_user.id,
+#                 uploaded_at=datetime.utcnow()
+#             )
+#             db.add(new_doc)
+#             db.commit()
+#             db.refresh(new_doc)
 
-            text = extract_text_from_file(file_path)
-            if not text:
-                continue
+#             text = extract_text_from_file(file_path)
+#             if not text:
+#                 continue
 
-            splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-            chunks = splitter.split_text(text)
+#             splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+#             chunks = splitter.split_text(text)
 
-            vectors = []
-            for i, chunk in enumerate(chunks):
-                vector = get_embedding(chunk)
-                vectors.append((
-                    f"{new_doc.id}_{i}",
-                    vector,
-                    {
-                        "document_id": str(new_doc.id),
-                        "filename": new_doc.filename,
-                        "category": new_doc.category,
-                        "text": chunk
-                    }
-                ))
+#             vectors = []
+#             for i, chunk in enumerate(chunks):
+#                 vector = get_embedding(chunk)
+#                 vectors.append((
+#                     f"{new_doc.id}_{i}",
+#                     vector,
+#                     {
+#                         "document_id": str(new_doc.id),
+#                         "filename": new_doc.filename,
+#                         "category": new_doc.category,
+#                         "text": chunk
+#                     }
+#                 ))
 
-            if vectors:
-                index.upsert(vectors)
+#             if vectors:
+#                 index.upsert(vectors)
 
-            uploaded_docs.append({
-                "document_id": new_doc.id,
-                "filename": new_doc.filename,
-                "category": new_doc.category,
-                "project_name": new_doc.project_name
-            })
+#             uploaded_docs.append({
+#                 "document_id": new_doc.id,
+#                 "filename": new_doc.filename,
+#                 "category": new_doc.category,
+#                 "project_name": new_doc.project_name
+#             })
 
-        return {
-            "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
-            "documents": uploaded_docs
-        }
+#         return {
+#             "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
+#             "documents": uploaded_docs
+#         }
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=str(e)
+#         )
     
 def get_all_users(db: Session, current_user: User):
     try:
