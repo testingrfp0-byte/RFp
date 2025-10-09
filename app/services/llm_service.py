@@ -271,80 +271,82 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
 
 def extract_questions_with_llm(pdf_text: str) -> dict:
     prompt = f"""
-You are a professional **RFP analysis assistant** with deep expertise in identifying and structuring vendor-response requirements from formal RFP documents.
+    You are a professional RFP analysis assistant with expertise in extracting precise information from complex documents.
 
-Your task is to extract **all questions, instructions, and requirements** that explicitly or implicitly require a vendor response.  
-You must also ensure that **the full descriptive or contextual text** associated with each question is included — not just the line that looks like a question.
+    Task:
+    Extract every **question, instruction, or prompt** from the RFP text that explicitly requires a vendor response. Each extracted item must be a verbatim question or directive as written in the RFP.
 
----
+    Do not:
+    - Summarize, rewrite, shorten, or modify the wording of any question or instruction.
+    - Infer or add questions that are not explicitly stated in the RFP text.
+    - Include context-only text, such as introductions, needs statements, goals, background information, or overviews, unless they contain an explicit question or instruction requiring a response.
+    - Include requests for references, such as "Provide three references," "List client references," "Include customer references," "Conflicts of Interest," or "Marketing Services Team."
+    - Include administrative or procedural instructions, such as "Response must be submitted by [date]," "Submit via email," or "Include a cover letter."
+    - Include vague or rhetorical questions that do not clearly require a vendor response (e.g., "Why is this important?").
 
-### Extraction Rules
+    Do:
+    - Extract each question or instruction **exactly as written** in the RFP (verbatim), preserving all punctuation, capitalization, and formatting.
+    - Preserve the section hierarchy and numbering as they appear in the RFP.
+    - Number questions sequentially within each section, extending the section's numbering format:
+        * For a section like "1.2 Proposal Requirements," number questions as "1.2.1", "1.2.2", etc.
+        * For Roman numeral sections like "III.A," number questions as "III.A.1", "III.A.2", etc.
+        * For sections like "I," number questions as "I.1", "I.2", etc.
+    - Restart question numbering (starting from 1) within each new section.
+    - Group questions by their respective section heading and number, exactly as provided in the RFP.
+    - Always prefix each question with its full section-based number (e.g., "1.2.1" or "III.A.1").
+    - If a section contains no questions or instructions requiring a response, do not include it in the output.
+    - Handle nested sections correctly, preserving the exact numbering format (e.g., "1.2.3.1" if the RFP uses such a format).
+    - If the RFP uses bullet points, tables, or other formatting for questions, extract the text of each question or instruction as a single string, ignoring formatting unless it impacts the question's meaning.
 
-**1. Identify All Response-Requiring Text**
-- Include both **direct questions** (ending in '?') and **statement-style prompts** (e.g., “The vendor shall provide...”, “Describe your approach...”, “Include your methodology for...”).
-- If a question or requirement is followed by additional explanatory sentences or paragraphs, include all of them as part of the **same question block**.
-- Treat a paragraph or bullet group describing one deliverable as a **single question block**.
+    Edge Cases:
+    - If a section contains a mix of questions and non-questions, only extract the explicit questions or instructions requiring a response.
+    - If a question is phrased as a statement but implies a response (e.g., "The vendor shall provide a detailed implementation plan"), treat it as an instruction requiring a response.
+    - If the RFP uses inconsistent numbering or formatting, follow the most logical interpretation of the hierarchy while preserving the original section titles and numbers.
+    - If no section headings or numbers are provided, group questions under a default section labeled "General Questions" with numbering like "G.1", "G.2", etc.
 
-**2. Preserve Full Context**
-- Always capture the **entire text block** relevant to the question or request, including surrounding sentences that clarify or specify expectations.
-- Do not cut off or shorten content — include full descriptive context if it belongs to the same requirement.
-- Ensure each extracted question block gives the full information needed to provide a complete vendor response.
+    Output Format:
+    Return a strict JSON object, with no Markdown, commentary, or additional text. The JSON should group questions by section, with each section identified by a unique key (starting from "1" and incrementing sequentially). Each section object must contain:
+    - "section": The exact section title and number as written in the RFP (e.g., "1.1 Scope" or "III.A Technical Requirements").
+    - "questions": A list of verbatim questions or instructions, each prefixed with their section-based number.
 
-**3. Maintain Verbatim Wording**
-- Do not paraphrase, rewrite, summarize, or modify text.
-- Keep all punctuation, capitalization, and formatting exactly as in the RFP.
+    Example Output:
+    ```json
+    {{
+      "1": {{
+        "section": "1.1 Scope",
+        "questions": [
+          "1.1.1 Define the brand’s personality, values, mission, and vision.",
+          "1.1.2 Describe how you will create a marketing strategy for our product suite."
+        ]
+      }},
+      "2": {{
+        "section": "2.1 Proposal Requirements",
+        "questions": [
+          "2.1.1 Provide your organization’s overview and differentiators.",
+          "2.1.2 Explain your execution approach in detail."
+        ]
+      }},
+      "3": {{
+        "section": "I Purpose",
+        "questions": [
+          "I.1 Provide your organization’s overview and differentiators.",
+          "I.2 Explain your execution approach in detail."
+        ]
+      }},
+      "4": {{
+        "section": "III.A Technical Requirements",
+        "questions": [
+          "III.A.1 Describe your software architecture.",
+          "III.A.2 Explain your data security approach.",
+          "III.A.3 Provide details of your support model."
+        ]
+      }}
+    }}
 
-**4. Section Grouping**
-- Group extracted questions by their section headings (e.g., “1.2 Proposal Requirements”, “III.A Technical Requirements”).
-- Preserve exact section titles and numbering.
-- If no section headings exist, group such questions under `"General Questions"`.
-
-**5. Numbering Format**
-- Use the existing section number and append sequential sub-numbers:
-  * For decimal-numbered sections: “1.2.1”, “1.2.2”, etc.
-  * For Roman-numbered sections: “III.A.1”, “III.A.2”, etc.
-  * For general sections: “G.1”, “G.2”, etc.
-- Restart numbering within each section.
-
-**6. Exclusions**
-- Exclude:
-  * Submission instructions (deadlines, format, contacts, portals)
-  * Reference requests (“Provide three references”, “Client list”, etc.)
-  * Administrative or procedural directions (“Include a cover letter”, “Submit by...”)
-  * Informational sections (background, goals, overviews) unless they contain a request for a vendor response.
-
-**7. Edge Handling**
-- If related information appears across consecutive paragraphs, include them together if they describe the same question or requirement.
-- Merge bullet points if they collectively describe a single response request.
-- If the RFP’s structure is inconsistent, infer the most logical grouping and numbering pattern.
-
----
-
-### Output Format
-
-Return a strict JSON object **only** (no Markdown, no commentary, no code fences).  
-Use the following format:
-
-{{
-  "1": {{
-    "section": "<exact section title and number>",
-    "questions": [
-      "<full, verbatim text of the complete question or instruction block>",
-      "<next question block>"
-    ]
-  }},
-  "2": {{
-    "section": "<next section title>",
-    "questions": [...]
-  }}
-}}
-
----
-
-RFP Document Text:
-\"\"\"
-{pdf_text}
-\"\"\"
+    RFP Document Text:
+    \"\"\"
+    {pdf_text}
+    \"\"\"
 """
 
 
