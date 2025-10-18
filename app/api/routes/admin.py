@@ -35,7 +35,7 @@ from app.utils.admin_function import (
 )
 from fastapi import Request
 from fastapi.responses import JSONResponse
-
+import hashlib
 
 router = APIRouter()
 Base.metadata.create_all(engine)
@@ -190,7 +190,7 @@ def assign_multiple_reviewers(
 def get_reviewers_by_file(file_id: int, db: Session = Depends(get_db)):
     return get_reviewers_by_file_service(file_id, db)
 
-LOGIN_URL = "https://inspiring-sunburst-3954ce.netlify.app"
+LOGIN_URL = "https://inspiring-sunburst-3954ce.netlify.app/"
 
 @router.post("/send-assignment-notification")
 async def send_assignment_notification_bulk(
@@ -649,6 +649,7 @@ def upload_library_new(
                     status_code=400,
                     detail=f"Unsupported file format: {file.filename}"
                 )
+
             timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
             saved_filename = f"{timestamp}_{file.filename}"
             file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
@@ -657,14 +658,20 @@ def upload_library_new(
                 import shutil
                 shutil.copyfileobj(file.file, f)
 
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+                file_hash = hashlib.sha256(file_bytes).hexdigest()
+
             new_doc = RFPDocument(
                 filename=file.filename,
                 file_path=file_path,
                 category=category,
                 project_name=project_name,
                 admin_id=current_user.id,
-                uploaded_at=datetime.utcnow()
+                uploaded_at=datetime.utcnow(),
+                file_hash=file_hash 
             )
+
             db.add(new_doc)
             db.commit()
             db.refresh(new_doc)

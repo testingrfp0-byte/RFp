@@ -52,6 +52,7 @@ UPLOAD_FOLDER = "uploads"
 index = pc.Index(PINECONE_INDEX)
 LOGIN_URL = "https://inspiring-sunburst-3954ce.netlify.app"
 
+
 async def process_rfp_file(file: UploadFile,project_name: str, db: Session, current_user):
     try:
         file_bytes = await file.read()

@@ -271,83 +271,97 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str
 
 def extract_questions_with_llm(pdf_text: str) -> dict:
     prompt = f"""
-    You are a professional RFP analysis assistant with expertise in extracting precise information from complex documents.
+        You are a **Senior RFP Analysis Expert** with extensive experience in analyzing government and corporate procurement documents. Your task is to **extract every explicit or implied vendor response requirement** from the provided RFP text with utmost accuracy.
 
-    Task:
-    Extract every **question, instruction, or prompt** from the RFP text that explicitly requires a vendor response. Each extracted item must be a verbatim question or directive as written in the RFP.
+        ---
 
-    Do not:
-    - Summarize, rewrite, shorten, or modify the wording of any question or instruction.
-    - Infer or add questions that are not explicitly stated in the RFP text.
-    - Include context-only text, such as introductions, needs statements, goals, background information, or overviews, unless they contain an explicit question or instruction requiring a response.
-    - Include requests for references, such as "Provide three references," "List client references," "Include customer references," "Conflicts of Interest," or "Marketing Services Team."
-    - Include administrative or procedural instructions, such as "Response must be submitted by [date]," "Submit via email," or "Include a cover letter."
-    - Include vague or rhetorical questions that do not clearly require a vendor response (e.g., "Why is this important?").
+        ###  Objective:
+        Extract **every question, instruction, or directive** that requires a vendor to provide information, documentation, confirmation, or explanation in their proposal.
 
-    Do:
-    - Extract each question or instruction **exactly as written** in the RFP (verbatim), preserving all punctuation, capitalization, and formatting.
-    - Preserve the section hierarchy and numbering as they appear in the RFP.
-    - Number questions sequentially within each section, extending the section's numbering format:
-        * For a section like "1.2 Proposal Requirements," number questions as "1.2.1", "1.2.2", etc.
-        * For Roman numeral sections like "III.A," number questions as "III.A.1", "III.A.2", etc.
-        * For sections like "I," number questions as "I.1", "I.2", etc.
-    - Restart question numbering (starting from 1) within each new section.
-    - Group questions by their respective section heading and number, exactly as provided in the RFP.
-    - Always prefix each question with its full section-based number (e.g., "1.2.1" or "III.A.1").
-    - If a section contains no questions or instructions requiring a response, do not include it in the output.
-    - Handle nested sections correctly, preserving the exact numbering format (e.g., "1.2.3.1" if the RFP uses such a format).
-    - If the RFP uses bullet points, tables, or other formatting for questions, extract the text of each question or instruction as a single string, ignoring formatting unless it impacts the question's meaning.
+        ---
 
-    Edge Cases:
-    - If a section contains a mix of questions and non-questions, only extract the explicit questions or instructions requiring a response.
-    - If a question is phrased as a statement but implies a response (e.g., "The vendor shall provide a detailed implementation plan"), treat it as an instruction requiring a response.
-    - If the RFP uses inconsistent numbering or formatting, follow the most logical interpretation of the hierarchy while preserving the original section titles and numbers.
-    - If no section headings or numbers are provided, group questions under a default section labeled "General Questions" with numbering like "G.1", "G.2", etc.
+        ###  Do NOT:
+        - Do **not** summarize, paraphrase, or alter the wording of any question or instruction.
+        - Do **not** infer or invent questions not explicitly or implicitly requiring a vendor response.
+        - Do **not** include:
+        - Administrative or procedural details (e.g., submission dates, formats, or contact info).
+        - References or appendices instructions (e.g., “Include three client references”).
+        - Informational context that does **not** request a vendor action (e.g., “The agency seeks to improve outreach”).
+        - Background, introduction, or goal statements unless they **explicitly** ask for a response.
+        - Rhetorical or explanatory questions that are not vendor-facing (e.g., “Why is this important?”).
 
-    Output Format:
-    Return a strict JSON object, with no Markdown, commentary, or additional text. The JSON should group questions by section, with each section identified by a unique key (starting from "1" and incrementing sequentially). Each section object must contain:
-    - "section": The exact section title and number as written in the RFP (e.g., "1.1 Scope" or "III.A Technical Requirements").
-    - "questions": A list of verbatim questions or instructions, each prefixed with their section-based number.
+        ---
 
-    Example Output:
-    ```json
-    {{
-      "1": {{
-        "section": "1.1 Scope",
-        "questions": [
-          "1.1.1 Define the brand’s personality, values, mission, and vision.",
-          "1.1.2 Describe how you will create a marketing strategy for our product suite."
-        ]
-      }},
-      "2": {{
-        "section": "2.1 Proposal Requirements",
-        "questions": [
-          "2.1.1 Provide your organization’s overview and differentiators.",
-          "2.1.2 Explain your execution approach in detail."
-        ]
-      }},
-      "3": {{
-        "section": "I Purpose",
-        "questions": [
-          "I.1 Provide your organization’s overview and differentiators.",
-          "I.2 Explain your execution approach in detail."
-        ]
-      }},
-      "4": {{
-        "section": "III.A Technical Requirements",
-        "questions": [
-          "III.A.1 Describe your software architecture.",
-          "III.A.2 Explain your data security approach.",
-          "III.A.3 Provide details of your support model."
-        ]
-      }}
-    }}
+        ###  Do:
+        - Extract **verbatim** text for each question or instruction, including punctuation and capitalization exactly as in the RFP.
+        - Treat **any directive phrased as a statement that clearly expects a vendor response** as a question.  
+        Examples:
+        - “The vendor shall provide…” → extract as a response-required instruction.  
+        - “Offeror must demonstrate…” → extract as a required response.  
+        - Preserve **section hierarchy, numbering, and structure** from the source RFP.
+        - Use and extend the numbering structure logically:
+        - “1.2 Proposal Requirements” → “1.2.1”, “1.2.2”, etc.
+        - “III.A Technical Approach” → “III.A.1”, “III.A.2”, etc.
+        - “I Introduction” → “I.1”, “I.2”, etc.
+        - Restart numbering at **1** within each new section.
+        - Group extracted questions **under their exact section headings** and **include the original section number/title**.
+        - If a section includes **no vendor-response elements**, **omit** it from the output.
+        - If the document lacks formal numbering or structure, group under **“General Questions” (G.1, G.2, etc.)**.
 
-    RFP Document Text:
-    \"\"\"
-    {pdf_text}
-    \"\"\"
-"""
+        ---
+
+        ###  Edge Case Handling:
+        - If mixed content appears (narrative + questions), include **only the explicit vendor-facing directives**.
+        - Recognize both **direct** (“Describe your process”) and **implicit** (“Vendor shall provide…”) vendor response requirements.
+        - Handle nested numbering or outline styles accurately (e.g., “1.2.3.1” or “III.B.1.a”).
+        - For bullet points, lists, or tables, extract each question/instruction as a **single clean text string**, ignoring formatting unless it changes meaning.
+        - Preserve **logical hierarchy** even when numbering is inconsistent or missing by analyzing indentation, font cues (if provided), or section headers.
+
+        ---
+
+        ###  Output Format:
+        Return a **strict JSON object** (no Markdown, no commentary, no explanations).
+
+        Each section in the JSON must contain:
+        - `"section"` → exact section title and number as written in the RFP.
+        - `"questions"` → list of extracted, verbatim vendor-response items prefixed with their section-based numbering.
+
+        ---
+
+        ###  Example Output:
+        {{
+        "1": {{
+            "section": "1.1 Scope of Work",
+            "questions": [
+            "1.1.1 Describe your agency’s approach to developing a comprehensive media strategy.",
+            "1.1.2 Provide a sample timeline for implementation."
+            ]
+        }},
+        "2": {{
+            "section": "2.1 Proposal Requirements",
+            "questions": [
+            "2.1.1 Outline your firm’s qualifications and experience.",
+            "2.1.2 Explain how your solution addresses the stated objectives."
+            ]
+        }},
+        "3": {{
+            "section": "III.A Technical Approach",
+            "questions": [
+            "III.A.1 Describe your proposed system architecture.",
+            "III.A.2 Provide your data protection and cybersecurity protocols."
+            ]
+        }}
+        }}
+
+        ---
+
+        ###  Input:
+        RFP Document Text:
+        \"\"\"
+        {pdf_text}
+        \"\"\"
+        """
+
 
 
 
@@ -422,7 +436,6 @@ def get_similar_context(question: str, top_k: int = 5):
     Retrieve both summaries and detailed chunks from Pinecone for Hybrid KB.
     Returns combined context and sources.
     """
-    # Embed the question
     embedding = client.embeddings.create(
         input=[question],
         model="text-embedding-3-small"  
@@ -462,8 +475,6 @@ def get_similar_context(question: str, top_k: int = 5):
     ]
 
     return "\n".join(context_texts), sources
-
-
 
 def generate_answer_with_context(question: str, context: str) -> str: 
     prompt = f"""
@@ -714,7 +725,6 @@ def summarize_company_background(company_name: str, context_chunks: list[str]) -
         temperature=0.3
     )
     return resp.choices[0].message.content.strip()
-
 
 def extract_text_from_file(file_path: str) -> str:
     ext = os.path.splitext(file_path)[1].lower()
