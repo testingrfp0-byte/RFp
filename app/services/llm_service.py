@@ -8,6 +8,7 @@ from app.models.rfp_models import User
 from app.config import client, index,SERPAPI_KEY
 from pptx import Presentation
 from PyPDF2 import PdfReader
+from fastapi import HTTPException
 import re
 import docx
 
@@ -394,71 +395,137 @@ def verify_password(plain_password, hashed_password):
 def hash_password(password):
     return pwd_context.hash(password)
 
-def get_similar_context(question: str, top_k: int = 5):
+# def get_similar_context(question: str, top_k: int = 5):
+#     """
+#     Retrieve both summaries and detailed chunks from Pinecone for Hybrid KB.
+#     Returns combined context and sources.
+#     """
+#     embedding = client.embeddings.create(
+#         input=[question],
+#         model="text-embedding-3-small"  
+#     ).data[0].embedding
+
+#     results = index.query(
+#         vector=embedding,
+#         top_k=top_k * 2, 
+#         include_metadata=True
+#     )
+
+#     summaries = []
+#     chunks = []
+#     for match in results["matches"]:
+#         if match["metadata"].get("type") == "summary":
+#             summaries.append(match)
+#         else:
+#             chunks.append(match)
+
+#     summaries = summaries[:top_k]
+#     chunks = chunks[:top_k]
+
+#     context_texts = []
+#     context_texts.extend([m["metadata"]["text"] for m in summaries])
+#     context_texts.extend([m["metadata"]["text"] for m in chunks])
+
+#     sources = [
+#         {
+#             "score": match["score"],
+#             "document_id": match["metadata"].get("document_id"),
+#             "filename": match["metadata"].get("filename"),
+#             "category": match["metadata"].get("category"),
+#             "type": match["metadata"].get("type"),
+#             "snippet": match["metadata"].get("text")[:300]  # limit snippet length
+#         }
+#         for match in summaries + chunks
+#     ]
+
+#     return "\n".join(context_texts), sources
+
+# def generate_answer_with_context(question: str, context: str) -> str: 
+#     prompt = f"""
+#     Answer the following question based only on the context below:
+
+#     Context:
+#     {context}
+
+#     Question: {question}
+#     Answer:
+#     """
+#     response = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[
+#             {"role": "system", "content": "You are a helpful assistant generating answers for RFP questions."},
+#             {"role": "user", "content": prompt}
+#         ],
+#         temperature=0.2,
+#         max_tokens=800
+#     )
+#     return response.choices[0].message.content.strip()
+
+def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
     """
-    Retrieve both summaries and detailed chunks from Pinecone for Hybrid KB.
-    Returns combined context and sources.
+    Retrieve RFP-specific chunks from Pinecone using file_id metadata filter.
     """
-    embedding = client.embeddings.create(
-        input=[question],
-        model="text-embedding-3-small"  
-    ).data[0].embedding
+    try:
+        embedding = client.embeddings.create(
+            input=[question],
+            model="text-embedding-3-small"
+        ).data[0].embedding
 
-    results = index.query(
-        vector=embedding,
-        top_k=top_k * 2, 
-        include_metadata=True
-    )
+        results = index.query(
+            vector=embedding,
+            top_k=top_k,
+            include_metadata=True,
+            filter={"file_id": str(rfp_id)}
+        )
 
-    summaries = []
-    chunks = []
-    for match in results["matches"]:
-        if match["metadata"].get("type") == "summary":
-            summaries.append(match)
-        else:
-            chunks.append(match)
+        context_texts = [match["metadata"]["text"] for match in results["matches"]]
+        sources = [
+            {
+                "score": match["score"],
+                "file_id": match["metadata"].get("file_id"),
+                "chunk_index": match["metadata"].get("chunk_index"),
+                "snippet": match["metadata"].get("text")[:300],
+            }
+            for match in results["matches"]
+        ]
 
-    summaries = summaries[:top_k]
-    chunks = chunks[:top_k]
+        return "\n".join(context_texts), sources
 
-    context_texts = []
-    context_texts.extend([m["metadata"]["text"] for m in summaries])
-    context_texts.extend([m["metadata"]["text"] for m in chunks])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pinecone retrieval failed: {str(e)}")
 
-    sources = [
-        {
-            "score": match["score"],
-            "document_id": match["metadata"].get("document_id"),
-            "filename": match["metadata"].get("filename"),
-            "category": match["metadata"].get("category"),
-            "type": match["metadata"].get("type"),
-            "snippet": match["metadata"].get("text")[:300]  # limit snippet length
-        }
-        for match in summaries + chunks
-    ]
-
-    return "\n".join(context_texts), sources
-
-def generate_answer_with_context(question: str, context: str) -> str: 
+def generate_answer_with_context(question: str, context: str) -> str:
+    """
+    Use OpenAI LLM to generate an answer based on RFP-specific context.
+    """
     prompt = f"""
-    Answer the following question based only on the context below:
+    You are an expert in responding to RFP (Request for Proposal) questions.
+    Use only the provided context to answer accurately and concisely.
 
     Context:
     {context}
 
-    Question: {question}
+    Question:
+    {question}
+
     Answer:
     """
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant generating answers for RFP questions."},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.2,
-        max_tokens=800
-    )
-    return response.choices[0].message.content.strip()
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant for RFP responses."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=800
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
 
 def analyze_answer_score_only(question_text: str, answer_text: str) -> float:
     prompt = f"""
@@ -575,6 +642,27 @@ def generate_summary(text: str) -> str:
         ]
     )
     return response.choices[0].message.content.strip()
+
+def delete_rfp_embeddings(file_id: int):
+    try:
+        results = index.query(
+            vector=[0.0] * 1536,
+            top_k=10000,   
+            include_metadata=False,
+            filter={"file_id": str(file_id)}
+        )
+
+        vector_ids = [match["id"] for match in results.get("matches", [])]
+        if vector_ids:
+            index.delete(ids=vector_ids)
+            print(f" Deleted {len(vector_ids)} Pinecone vectors for file_id {file_id}")
+        else:
+            print(f" No Pinecone vectors found for file_id {file_id}")
+
+    except Exception as e:
+        print(f" Error deleting embeddings for RFP {file_id}: {e}")
+
+
 
 
 

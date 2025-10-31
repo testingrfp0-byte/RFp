@@ -42,7 +42,48 @@ def assigned_questions(db: Session, current_user: User):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def generate_answers_service(db: Session, current_user: User, question_id: int):
+# def generate_answers_service(db: Session, current_user: User, question_id: int):
+#     try:
+#         assignment = (
+#             db.query(RFPQuestion, Reviewer)
+#             .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
+#             .filter(
+#                 Reviewer.user_id == current_user.id,
+#                 Reviewer.ques_id == question_id
+#             )
+#             .first()
+#         )
+
+#         if assignment is None:
+#             raise HTTPException(status_code=403, detail="Question not assigned to current user")
+
+#         question, reviewer = assignment
+
+#         contexts, sources = get_similar_context(question.question_text)
+
+#         answer = generate_answer_with_context(question.question_text, contexts)
+#         answer = clean_answer(answer)
+
+
+#         version = ReviewerAnswerVersion(
+#             user_id=current_user.id,
+#             ques_id=question_id,
+#             answer=answer
+#         )
+#         db.add(version)
+#         reviewer.ans = answer
+#         db.commit()
+
+#         return {
+#             "question_id": question.id,
+#             "question_text": question.question_text,
+#             "answer": answer,
+#             "sources": sources 
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+def generate_answers_service(db: Session, current_user, question_id: int):
     try:
         assignment = (
             db.query(RFPQuestion, Reviewer)
@@ -59,11 +100,12 @@ def generate_answers_service(db: Session, current_user: User, question_id: int):
 
         question, reviewer = assignment
 
-        contexts, sources = get_similar_context(question.question_text)
+        rfp_id = question.rfp_id
+
+        contexts, sources = get_similar_context(question.question_text, rfp_id)
 
         answer = generate_answer_with_context(question.question_text, contexts)
         answer = clean_answer(answer)
-
 
         version = ReviewerAnswerVersion(
             user_id=current_user.id,
@@ -77,9 +119,11 @@ def generate_answers_service(db: Session, current_user: User, question_id: int):
         return {
             "question_id": question.id,
             "question_text": question.question_text,
+            "rfp_id": rfp_id,
             "answer": answer,
-            "sources": sources 
+            "sources": sources
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

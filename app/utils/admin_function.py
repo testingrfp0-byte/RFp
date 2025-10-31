@@ -19,14 +19,98 @@ from app.services.llm_service import (
     extract_questions_with_llm, summarize_results_with_llm,
     generate_search_queries, search_with_serpapi, analyze_answer_score_only,
     client, parse_rfp_summary, get_embedding, extract_text_from_file,
-    get_similar_context,generate_summary
+    get_similar_context,generate_summary,delete_rfp_embeddings
 )
 from app.schemas.schema import (
     AssignReviewer, ReviewerOut, AdminEditRequest, UserOut,reviwerdelete, ReassignReviewerRequest
 )
 from app.config import pc,index,UPLOAD_FOLDER
 
-async def process_rfp_file(file: UploadFile,project_name: str, db: Session, current_user):
+# async def process_rfp_file(file: UploadFile,project_name: str, db: Session, current_user):
+#     try:
+#         file_bytes = await file.read()
+#         file_hash = hashlib.md5(file_bytes).hexdigest()
+
+#         existing_rfp = db.query(RFPDocument).filter(RFPDocument.file_hash == file_hash).first()
+#         if existing_rfp:
+#             raise HTTPException(
+#                 status_code=208,
+#                 detail={
+#                     "status": "duplicate",
+#                     "message": "This RFP already exists.",
+#                     "existing_rfp_id": existing_rfp.id
+#                 }
+#             )
+
+#         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+#         dummy_filename = f"rfp_{timestamp}.pdf"
+#         file_path = os.path.join(UPLOAD_FOLDER, dummy_filename)
+
+#         with open(file_path, "wb") as f:
+#             f.write(file_bytes)
+
+#         rfp_text = extract_text_from_pdf(file_bytes)
+#         if not rfp_text.strip():
+#             return {"error": "PDF text is empty or not readable."}
+
+#         search_queries = generate_search_queries(rfp_text)
+#         questions_grouped = extract_questions_with_llm(rfp_text)
+#         company_rfp_text = extract_company_background_from_rfp(rfp_text)
+
+#         all_snippets = []
+#         for query in search_queries:
+#             results = search_with_serpapi(query)
+#             for item in results:
+#                 if snippet := item.get("snippet"):
+#                     all_snippets.append(snippet)
+
+#         raw_summary = summarize_results_with_llm(all_snippets, rfp_company_text=company_rfp_text)
+#         structured_summary = parse_rfp_summary(raw_summary)
+
+#         new_rfp = RFPDocument(
+#             filename=file.filename,
+#             file_path=file_path,
+#             file_hash=file_hash,
+#             extracted_text=rfp_text,
+#             admin_id=current_user.id,
+#             category="history",
+#             project_name=project_name
+#         )
+#         db.add(new_rfp)
+#         db.commit()
+#         db.refresh(new_rfp)
+
+#         new_summary = CompanySummary(
+#             rfp_id=new_rfp.id,
+#             summary_text=raw_summary,
+#             admin_id=current_user.id
+#         )
+#         db.add(new_summary)
+
+#         for group_number, data in questions_grouped.items():
+#             section_name = data.get("section", f"Section {group_number}")
+#             for q in data.get("questions", []):
+#                 db.add(RFPQuestion(
+#                     rfp_id=new_rfp.id,
+#                     question_text=q,
+#                     section=section_name,
+#                     admin_id=current_user.id
+#                 ))
+
+#         db.commit()
+
+#         return {
+#             "status": "new",
+#             "rfp_id": new_rfp.id,
+#             "saved_file": file_path,
+#             "category": new_rfp.category,
+#             "project_name": project_name,
+#             "summary": structured_summary,
+#             "total_questions": questions_grouped
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+async def process_rfp_file(file: UploadFile, project_name: str, db: Session, current_user):
     try:
         file_bytes = await file.read()
         file_hash = hashlib.md5(file_bytes).hexdigest()
@@ -45,6 +129,7 @@ async def process_rfp_file(file: UploadFile,project_name: str, db: Session, curr
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         dummy_filename = f"rfp_{timestamp}.pdf"
         file_path = os.path.join(UPLOAD_FOLDER, dummy_filename)
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
         with open(file_path, "wb") as f:
             f.write(file_bytes)
@@ -99,6 +184,30 @@ async def process_rfp_file(file: UploadFile,project_name: str, db: Session, curr
 
         db.commit()
 
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        chunks = splitter.split_text(rfp_text)
+
+        for i, chunk in enumerate(chunks):
+            try:
+                embedding_response = client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=chunk
+                )
+                embedding_vector = embedding_response.data[0].embedding
+                index.upsert([
+                    {
+                        "id": str(uuid.uuid4()),
+                        "values": embedding_vector,
+                        "metadata": {
+                            "file_id": str(new_rfp.id),
+                            "chunk_index": i,
+                            "text": chunk
+                        }
+                    }
+                ])
+            except Exception as embed_err:
+                print(f"[Embedding Error] Chunk {i}: {embed_err}")
+
         return {
             "status": "new",
             "rfp_id": new_rfp.id,
@@ -106,10 +215,13 @@ async def process_rfp_file(file: UploadFile,project_name: str, db: Session, curr
             "category": new_rfp.category,
             "project_name": project_name,
             "summary": structured_summary,
-            "total_questions": questions_grouped
+            "total_questions": questions_grouped,
+            "embedded_chunks": len(chunks)
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 def fetch_file_details(db: Session):
     try:
@@ -369,6 +481,34 @@ def get_assign_user_status_service(db: Session, current_user: User):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# def delete_rfp_document_service(rfp_id: int, db: Session, current_user: User):
+#     try:
+#         if current_user.role != "admin":
+#             raise HTTPException(
+#                 status_code=status.HTTP_401_UNAUTHORIZED,
+#                 detail="Only admins can delete docs."
+#             )
+
+#         rfp = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+#         if not rfp:
+#             raise HTTPException(
+#                 status_code=404,
+#                 detail="RFP document not found."
+#             )
+
+#         db.delete(rfp)
+#         db.commit()
+
+#         return {"message": "RFP document and all related data deleted successfully."}
+
+#     except HTTPException as http_exc:
+#         raise http_exc
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to delete RFP document: {str(e)}"
+#         )
+
 def delete_rfp_document_service(rfp_id: int, db: Session, current_user: User):
     try:
         if current_user.role != "admin":
@@ -383,11 +523,16 @@ def delete_rfp_document_service(rfp_id: int, db: Session, current_user: User):
                 status_code=404,
                 detail="RFP document not found."
             )
+        if os.path.exists(rfp.file_path):
+            os.remove(rfp.file_path)
+            # print(f" Deleted file from disk: {rfp.file_path}")
+
+        delete_rfp_embeddings(rfp_id)
 
         db.delete(rfp)
         db.commit()
 
-        return {"message": "RFP document and all related data deleted successfully."}
+        return {"message": "RFP document and all related embeddings deleted successfully."}
 
     except HTTPException as http_exc:
         raise http_exc
@@ -395,8 +540,8 @@ def delete_rfp_document_service(rfp_id: int, db: Session, current_user: User):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete RFP document: {str(e)}"
-        )
-    
+        ) 
+
 async def remove_user_service(ques_id: int, user_id: int, db: Session, current_user: User):
     try:
         if current_user.role != "admin":
