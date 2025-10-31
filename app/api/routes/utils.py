@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status,Request
+from app.config import oauth2_scheme,SECRET_KEY,ALGORITHM,ACCESS_TOKEN_EXPIRE_MINUTES,SENDER_EMAIL,SENDER_PASSWORD
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User
 from app.db.database import get_db
@@ -12,11 +12,6 @@ from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 import os
 import re
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-SECRET_KEY = "narscbjim@$@&^@&%^&RFghgjvbdsha"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
@@ -64,16 +59,14 @@ def generate_otp(length: int = 4):
     return ''.join(random.choices(string.digits, k=length))
 
 def send_email(to_email: str, subject: str, body: str):
-    sender_email = "nileshlinux01@gmail.com"
-    sender_password = "zzec ytjd nngt xajj"
     msg = MIMEText(body)
     msg['Subject'] = subject
-    msg['From'] = sender_email
+    msg['From'] = SENDER_EMAIL
     msg['To'] = to_email
     
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, to_email, msg.as_string())
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
 
 def build_image_url(request: Request, image_value: str | None) -> str | None:
     """

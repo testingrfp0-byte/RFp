@@ -1,12 +1,9 @@
-from fastapi import HTTPException,APIRouter,Depends
+from fastapi import APIRouter,Depends
 from sqlalchemy.orm import Session
-from app.models.rfp_models import User,Reviewer,RFPQuestion,ReviewerAnswerVersion
-from datetime import datetime
+from app.models.rfp_models import User
 from app.utils.dependencies import get_db
 from app.api.routes.utils import get_current_user
-from app.services.llm_service import get_similar_context,generate_answer_with_context
 from app.utils.user_function import answer_versions,assigned_questions,generate_answers_service,update_answer_service,submit_service,chech_service,filter_service
-
 from app.schemas.schema import UpdateAnswerRequest
 
 router = APIRouter()

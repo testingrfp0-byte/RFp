@@ -76,8 +76,6 @@ class RFPDocumentGroupedQuestionsOut(BaseModel):
         from_attributes = True
 
 class AssignReviewer(BaseModel):
-
-    # username: str
     user_id: List[int]
     ques_ids: List[int]
     file_id: int
@@ -90,10 +88,7 @@ class NotificationRequest(BaseModel):
 class AssignedQuestionOut(BaseModel):
     question_id: int
     question_text: str
-    # rfp_id: int
     section: Optional[str]
-    # status: Optional[str]
-    # assigned_at: Optional[datetime]
 
     class Config:
         from_attributes = True
@@ -103,7 +98,6 @@ class ReviewerOut(BaseModel):
     question: str
     user_id: int
     username: str
-    # status: str
 
     class Config:
         from_attributes = True
@@ -138,8 +132,6 @@ class UpdateAnswerRequest(BaseModel):
 class VerifyOtpRequest(BaseModel):
     email: str
     otp: str
-
-from pydantic import BaseModel
 
 class ReassignReviewerRequest(BaseModel):
     user_id: int

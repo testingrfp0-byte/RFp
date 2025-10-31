@@ -2,8 +2,6 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey,Forei
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.database import Base
-import enum
-from sqlalchemy.sql import expression 
 
 class RFPDocument(Base):
     __tablename__ = "rfp_documents"
@@ -29,7 +27,6 @@ class RFPDocument(Base):
         cascade="all, delete-orphan"
     )
 
-
 class CompanySummary(Base):
     __tablename__ = "company_summaries"
     id = Column(Integer, primary_key=True, index=True)
@@ -39,7 +36,6 @@ class CompanySummary(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     rfp = relationship("RFPDocument", back_populates="summary")
-
 
 class RFPQuestion(Base):
     __tablename__ = "rfp_questions"
@@ -67,7 +63,6 @@ class RFPQuestion(Base):
         overlaps="reviewer"
     )
 
-
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -86,7 +81,6 @@ class User(Base):
         cascade="all, delete-orphan",  
         passive_deletes=True          
     )
-
 
 class Reviewer(Base):
     __tablename__ = "reviewer"
@@ -118,7 +112,6 @@ class Reviewer(Base):
         passive_deletes=True,
         overlaps="question,user"
     )
-
 
 class ReviewerAnswerVersion(Base):
     __tablename__ = "reviewer_answer_versions"

@@ -1,4 +1,4 @@
-from fastapi import Depends,HTTPException,Response,APIRouter,status
+from fastapi import Depends,HTTPException,APIRouter,status
 from sqlalchemy.orm import Session
 from app.schemas.schema import user_register
 from app.services.llm_service import hash_password
@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from app.api.routes.utils import get_current_user
 import secrets
 from datetime import datetime, timedelta
-
+from app.config import LOGIN_URL
 SESSION_COOKIE = "session_user"
 router = APIRouter()
 
@@ -66,7 +66,7 @@ def register(
 
         if request.mode == "add":
             verification_url = (
-                f"https://inspiring-sunburst-3954ce.netlify.app/verify-email"
+                f"{LOGIN_URL}verify-email"
                 f"?otp={otp}&email={user.email}&password={request.password}&role={request.role}"
             )
             background_tasks.add_task(
@@ -182,11 +182,6 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/logout")
-def logout(response: Response):
-    response.delete_cookie(SESSION_COOKIE)
-    return {"message": "Logout successful"}
 
 @router.post("/forgot_password")
 def forgot_password(request: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):

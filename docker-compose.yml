@@ -24,7 +24,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:root@db:5432/test1
     restart: always
-    # Uncomment below if you want live-reload during development
     # volumes:
     #   - .:/app
 

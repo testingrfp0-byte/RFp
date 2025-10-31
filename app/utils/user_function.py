@@ -119,9 +119,7 @@ def update_answer_service(db: Session, current_user: User, question_id: int, new
 
         if reviewer is None:
             raise HTTPException(status_code=403, detail="Question not assigned to current user")
-
         # print('before submit', reviewer.ans)
-
         if reviewer.ans:
             version = ReviewerAnswerVersion(
                 user_id=current_user.id,
@@ -130,7 +128,6 @@ def update_answer_service(db: Session, current_user: User, question_id: int, new
             )
             
             db.add(version)
-
         # reviewer.ans = new_answer
         db.commit()     
         db.refresh(version)
@@ -139,7 +136,6 @@ def update_answer_service(db: Session, current_user: User, question_id: int, new
 
         db.commit()
         db.refresh(reviewer)
-
         # print('after submit', reviewer.ans)
 
         return {
@@ -147,7 +143,6 @@ def update_answer_service(db: Session, current_user: User, question_id: int, new
             "question_id": reviewer.ques_id,
             "current_answer": reviewer.ans
         }
-
     except HTTPException:
         raise
     except Exception as e:
@@ -231,7 +226,13 @@ def filter_service(db: Session, current_user: User,status: str):
         ).all()
 
         if not reviewers:
-            raise HTTPException(status_code=404, detail="No questions assigned to this user.")
+            return {
+                "user_id": current_user.id,
+                "status": status,
+                "count": 0,
+                "questions": []
+            }
+
 
         filtered_questions = []
 

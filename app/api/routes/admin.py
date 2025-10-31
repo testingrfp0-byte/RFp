@@ -10,16 +10,14 @@ from docx import Document
 from collections import defaultdict
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from app.config import mail_config
+from app.config import mail_config,LOGIN_URL,GENERATED_FOLDER 
 from app.db.database import get_db, Base, engine
 from app.schemas.schema import (
     FileDetails, AssignReviewer, ReviewerOut, AdminEditRequest,
     RFPDocumentGroupedQuestionsOut, NotificationRequest,
     reviwerdelete, ChatInputRequest, ReassignReviewerRequest, GroupedRFPQuestionOut,QuestionOut)
 from app.models.rfp_models import User, Reviewer, RFPDocument, RFPQuestion
-from app.services.llm_service import (
-    query_vector_db, client,
-    build_company_background_prompt, build_proposal_prompt)
+from app.services.llm_service import client 
 from app.api.routes.utils import get_current_user
 from app.utils.admin_function import (
     process_rfp_file, fetch_file_details,
@@ -31,11 +29,10 @@ from app.utils.admin_function import (
     admin_filter_questions_by_status_service, analyze_overall_score_service,
     view_rfp_document_service, edit_question_by_admin_service,
     update_profile_service, delete_reviewer_service,
-    regenerate_answer_with_chat_service, reassign_reviewer_service
+    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents
 )
 from fastapi import Request
 from fastapi.responses import JSONResponse
-import hashlib
 
 router = APIRouter()
 Base.metadata.create_all(engine)
@@ -73,22 +70,6 @@ def get_file_details(
         )
     
     return fetch_file_details(db)
-
-# @router.post("/upload-library")
-# def upload_library(
-#     files: List[UploadFile] = File(...),
-#     project_name: str = Form(...),
-#     category: str = Form(...),
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     if current_user.role != "admin":
-#         raise HTTPException(
-#             status_code=status.HTTP_401_UNAUTHORIZED,
-#             detail="Only admins can upload library documents."
-#         )
-    
-#     return process_library_upload(files,project_name, category, db, current_user)
 
 @router.get("/userdetails")
 def get_user(
@@ -177,7 +158,6 @@ def get_rfp_details(
         "questions_by_section": grouped_questions
     }
 
-
 @router.post("/assign-reviewer")
 def assign_multiple_reviewers(
     request: AssignReviewer,
@@ -189,8 +169,6 @@ def assign_multiple_reviewers(
 @router.get("/assigned-reviewers/{file_id}", response_model=list[ReviewerOut])
 def get_reviewers_by_file(file_id: int, db: Session = Depends(get_db)):
     return get_reviewers_by_file_service(file_id, db)
-
-LOGIN_URL = "https://inspiring-sunburst-3954ce.netlify.app/"
 
 @router.post("/send-assignment-notification")
 async def send_assignment_notification_bulk(
@@ -278,15 +256,13 @@ def check(
 ):
     return check_submissions_service(db, current_user)
 
-
 @router.get("/assign_user_status")
 def assign_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     return get_assign_user_status_service(db, current_user)
-
-    
+  
 @router.delete("/rfp/{rfp_id}")
 def delete_rfp_document(
     rfp_id: int,
@@ -345,12 +321,10 @@ def view_rfp_document(
 
     return view_rfp_document_service(rfp_id, db)
 
-GENERATED_FOLDER = "generated_docs"
-
 @router.post("/generate-rfp-doc/")
 async def generate_rfp_doc(
     rfp_id: int,
-    request: Request,   # <-- added for absolute URL
+    request: Request, 
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -384,12 +358,10 @@ async def generate_rfp_doc(
 
     company_name = getattr(rfp_doc, "client_name", "Ringer")
 
-    # --- Example: Build a Word doc ---
     doc = Document()
 
-    # Cover Page
     try:
-        logo_path = "image.png"  # Adjust path if needed
+        logo_path = "image.png" 
         doc.add_picture(logo_path, width=Inches(1.5))
         last_paragraph = doc.paragraphs[-1]
         last_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -401,18 +373,15 @@ async def generate_rfp_doc(
     doc.add_paragraph(f"Client: {company_name}")
     doc.add_paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d')}")
 
-    # Example extra section
     doc.add_page_break()
     doc.add_heading("Executive Summary", level=1)
     doc.add_paragraph(executive_summary)
 
-    # --- Save File ---
     os.makedirs(GENERATED_FOLDER, exist_ok=True)
     file_name = f"rfp_response_{rfp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.docx"
     file_path = os.path.join(GENERATED_FOLDER, file_name)
     doc.save(file_path)
 
-    # Build absolute download URL
     base_url = str(request.base_url).rstrip("/")
     download_url = f"{base_url}/download/{file_name}"
 
@@ -553,75 +522,6 @@ async def reassign_reviewer(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
-
-
-
-
-
-
-# ------------------------------------------
-# for test the endpoint 
-from pinecone import Pinecone, ServerlessSpec
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_ENV = os.getenv("PINECONE_ENV")   # e.g. aws-us-east-1
-PINECONE_INDEX = os.getenv("PINECONE_INDEX", "kb-index")
-pc = Pinecone(api_key=PINECONE_API_KEY)
-
-
-
-
-
-if PINECONE_INDEX not in pc.list_indexes().names():
-    pc.create_index(
-        name=PINECONE_INDEX,
-        dimension=1536, 
-        metric="cosine",
-        spec=ServerlessSpec(
-            cloud="aws",
-            region="us-east-1" 
-        )
-    )
-
-index = pc.Index(PINECONE_INDEX)
-
-
-def extract_text_from_file(file_path: str) -> str:
-    """Extract text from PDF/DOCX/PPTX. 
-       Replace with your actual implementation."""
-    if file_path.endswith(".pdf"):
-        from PyPDF2 import PdfReader
-        reader = PdfReader(file_path)
-        return " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
-    # TODO: Add docx, pptx extraction
-    return ""
-
-
-def get_embedding(text: str) -> list:
-    """Generate embeddings for a text string."""
-    resp = client.embeddings.create(model="text-embedding-3-small", input=[text])
-    return resp.data[0].embedding
-
-
-def generate_summary(text: str) -> str:
-    """Generate summary of an RFP using LLM."""
-    prompt = f"Summarize the following RFP in 3–5 paragraphs:\n\n{text[:8000]}"
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are an RFP summarizer."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return response.choices[0].message.content.strip()
-
-
-# ----------- API Route -----------
-
 @router.post("/upload-library")
 def upload_library_new(
     files: List[UploadFile] = File(...),
@@ -637,98 +537,7 @@ def upload_library_new(
         )
 
     try:
-        UPLOAD_FOLDER = "uploads"
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-        uploaded_docs = []
-
-        for file in files:
-            file_ext = os.path.splitext(file.filename)[1].lower()
-            if file_ext not in [".pdf", ".docx", ".pptx"]:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported file format: {file.filename}"
-                )
-
-            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-            saved_filename = f"{timestamp}_{file.filename}"
-            file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
-
-            with open(file_path, "wb") as f:
-                import shutil
-                shutil.copyfileobj(file.file, f)
-
-            with open(file_path, "rb") as f:
-                file_bytes = f.read()
-                file_hash = hashlib.sha256(file_bytes).hexdigest()
-
-            new_doc = RFPDocument(
-                filename=file.filename,
-                file_path=file_path,
-                category=category,
-                project_name=project_name,
-                admin_id=current_user.id,
-                uploaded_at=datetime.utcnow(),
-                file_hash=file_hash 
-            )
-
-            db.add(new_doc)
-            db.commit()
-            db.refresh(new_doc)
-
-            text = extract_text_from_file(file_path)
-            if not text:
-                continue
-
-            summary = generate_summary(text)
-            summary_vector = get_embedding(summary)
-
-            index.upsert(
-                vectors=[(
-                    f"summary_{new_doc.id}",
-                    summary_vector,
-                    {
-                        "document_id": str(new_doc.id),
-                        "filename": new_doc.filename,
-                        "category": new_doc.category,
-                        "project_name": new_doc.project_name,
-                        "type": "summary",
-                        "text": summary
-                    }
-                )],
-                namespace="summaries"
-            )
-
-            splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-            chunks = splitter.split_text(text)
-
-            vectors = []
-            for i, chunk in enumerate(chunks):
-                vector = get_embedding(chunk)
-                vectors.append((
-                    f"{new_doc.id}_{i}",
-                    vector,
-                    {
-                        "document_id": str(new_doc.id),
-                        "filename": new_doc.filename,
-                        "category": new_doc.category,
-                        "project_name": new_doc.project_name,
-                        "type": "chunk",
-                        "chunk_id": i,
-                        "text": chunk
-                    }
-                ))
-
-            if vectors:
-                index.upsert(vectors=vectors, namespace=f"rfp_{new_doc.id}")
-
-            uploaded_docs.append({
-                "document_id": new_doc.id,
-                "filename": new_doc.filename,
-                "category": new_doc.category,
-                "project_name": new_doc.project_name
-            })
-
+        uploaded_docs = upload_documents(files, project_name, category, current_user, db)
         return {
             "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
             "documents": uploaded_docs
