@@ -39,11 +39,18 @@ def register(
             )
 
         otp = generate_otp()
+        if request.mode == "add":  
+            # Verification URL mode → expires in 24 hours
+            expiry_time = datetime.utcnow() + timedelta(hours=24)
+        else:
+            # OTP mode → expires in 10 minutes
+            expiry_time = datetime.utcnow() + timedelta(minutes=10)
+
         expiry_time = datetime.utcnow() + timedelta(minutes=10)
 
         if existing_user:
             existing_user.username = request.username.strip()
-            existing_user.password = hash_password(request.password)
+            # existing_user.password = hash_password(request.password)
             existing_user.role = request.role
             existing_user.reset_otp = otp
             existing_user.otp_expiry = expiry_time
@@ -74,7 +81,7 @@ def register(
                 to_email=user.email,
                 subject="Verify Your Email",
                 body=f"Hi {user.username},\n\n"
-                    f"Please click the link below to verify your email (valid for 10 minutes):\n\n"
+                    f"Please click the link below to verify your email (valid for 24 hours):\n\n"
                     f"{verification_url}\n\n"
                     f"If you did not request this, please ignore."
             )
@@ -95,7 +102,9 @@ def register(
 @router.get("/verify-email")
 def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db)):
     try:
-        user = db.query(User).filter(User.email == email).first()
+        # user = db.query(User).filter(User.email == email).first()
+        user = db.query(User).filter(User.email == email.strip().lower()).first()
+
 
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -103,8 +112,15 @@ def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db))
         if user.is_verified:
             return {"message": "Email already verified"}
 
-        if user.reset_otp != otp or user.otp_expiry < datetime.utcnow():
-            raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+        # if user.reset_otp != otp or user.otp_expiry < datetime.utcnow():
+        #     raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+
+        if user.reset_otp != otp:
+            raise HTTPException(status_code=400, detail="Invalid verification link")
+
+        if user.otp_expiry is None or datetime.utcnow() > user.otp_expiry:
+            raise HTTPException(status_code=400, detail="Verification link has expired")
+
 
         user.role = role  
         user.is_verified = True
@@ -113,8 +129,11 @@ def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db))
         db.commit()
 
         return {"message": "Email verified successfully", "role": user.role}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/verify_otp")
 def verify_otp(request: VerifyOtpRequest, db: Session = Depends(get_db)):

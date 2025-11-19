@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.rfp_models import User
 from app.utils.dependencies import get_db
 from app.api.routes.utils import get_current_user
-from app.utils.user_function import answer_versions,assigned_questions,generate_answers_service,update_answer_service,submit_service,chech_service,filter_service
+from app.utils.user_function import answer_versions,assigned_questions,generate_answers_service,update_answer_service,submit_service,chech_service,filter_service,analyze_single_question
 from app.schemas.schema import UpdateAnswerRequest
 
 router = APIRouter()
@@ -60,3 +60,12 @@ def filter_questions_by_status(
     current_user: User = Depends(get_current_user)
 ):
     return filter_service(db, current_user,status)
+
+@router.post("/analyze-question")
+def analyze_single(
+    rfp_id: int,
+    question_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return analyze_single_question(rfp_id, question_id, db, current_user)

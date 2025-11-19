@@ -74,7 +74,7 @@ def generate_search_queries(rfp_text: str) -> list:
     system_prompt = "You generate Google search queries to build complete company profiles from RFPs."
 
     content = chat_model(
-        model="gpt-4o-mini",
+        model="gpt-4o-mini",    
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.4,
@@ -90,85 +90,112 @@ def extract_company_background_from_rfp(rfp_text: str) -> str:
     2. Company Background
     3. Submission Details & Requirements
     """
-    
+
     user_prompt = f"""
-    You are an expert RFP analyst.
+    You are a senior RFP analyst with deep expertise in procurement, compliance, and government/enterprise documentation.
 
-    Your task is to extract and organize information from the provided RFP text into exactly **three sections**, preserving the original wording wherever possible.  
+    Your task is to extract and reorganize information from the provided RFP text into **exactly three sections**.  
+    You must pull the content directly from the text without losing any detail.
 
-    **General Rules**
-    - DO copy text verbatim whenever possible. Only merge sentences if needed for readability.  
-    - DO capture *every relevant item* across the full RFP — even if details appear scattered in multiple sections.  
-    - DO consolidate related information into the correct section.  
-    - DO include stakeholder names, budgets, goals, and priorities in context.  
-    - DO NOT add, infer, or hallucinate information.  
-    - DO NOT omit details.  
-    - DO NOT duplicate section headings from the RFP itself.  
-    - DO NOT place submission deadlines, addresses, or instructions in Section 1 or Section 2.  
-    ---
-    ### Section 1: Purpose of the RFP
-    - Extract the stated purpose and intent of issuing the RFP.  
-    - Include goals, objectives, and desired outcomes.  
-    - Capture stakeholders, sponsoring departments, or partner organizations.  
-    - Mention scope of services, strategic drivers, or future plans *only if tied to purpose*.  
-    - Exclude submission deadlines, contacts, or proposal instructions.  
+    ============================================================
+     **CRITICAL EXTRACTION RULES (DO NOT VIOLATE)**  
+    ============================================================
 
-    ### Section 2: Company Background
-    - Extract **all organizational background** about the issuer. This may appear in multiple parts of the RFP.  
-    - Include details such as:
-        - Full name of issuing organization (legal name if provided).  
-        - Location(s): headquarters, offices, or areas served.  
-        - Organizational type (public, private, nonprofit, government).  
-        - History, mission, vision, or strategic priorities.  
-        - Size, funding levels, budgets, or resources mentioned.  
-        - Services, programs, or industries the organization supports.  
-        - Partnerships, stakeholders, or governance structures.  
-        - Diversity, equity, or inclusion priorities (if stated).  
-    - Consolidate into clear narrative paragraphs.  
-    - Exclude submission instructions, requirements, or deadlines.  
+    **1. NO HALLUCINATIONS.**  
+    - If the RFP text does not contain a detail, leave it out.  
+    - Never infer names, dates, budgets, processes, or company info.
 
-    ### Section 3: Submission Details & Requirements
-    - Copy verbatim **all procedural and compliance requirements**, including:  
-        - Submission deadlines, times, and locations.  
-        - Where and how to submit (mail, email, portal, hard copy, flash drive, etc.).  
-        - Contacts for submission or questions (names, titles, phone, email).  
-        - Proposal format, length limits, structure, required attachments/forms.  
-        - Eligibility, compliance, or certification requirements.  
-        - Contract terms, evaluation criteria, or selection process details.  
-    - If requirements appear in multiple parts of the RFP, merge them into one complete section.  
+    **2. DO NOT OMIT ANY INFORMATION.**  
+    - If relevant content appears in multiple places in the RFP, gather all of it.  
+    - Consolidate it into the correct section.
 
-    ---
+    **3. USE VERBATIM TEXT WHENEVER POSSIBLE.**  
+    - Preserve original wording, formatting style, terminology, and phrasing.  
+    - Only merge, compress, or rewrite when necessary for clarity.
 
-    **Output Format:**
-    Return the extracted content in the following exact structure:
+    **4. STRICT SECTION SEPARATION.**  
+    - No submission details in Section 1 or Section 2.  
+    - No background info in Section 1 or Section 3.  
+    - No purpose-related narrative in Section 2 or Section 3.
+
+    **5. DO NOT DUPLICATE RFP HEADINGS.**  
+    - Use only the section headings defined below.
+
+    ============================================================
+     **SECTION REQUIREMENTS**
+    ============================================================
+
+    ### **Section 1: Purpose of the RFP**
+    Extract all content that explains:
+    - The purpose, intent, or reason for issuing the RFP.  
+    - Strategic goals, problem statements, motivations, and desired outcomes.  
+    - Stakeholders, agencies, departments, or sponsoring bodies explicitly tied to purpose.  
+    - Scope elements *only when directly connected to purpose*.  
+    **Exclude** submission instructions, dates, addresses, or proposal formatting.
+
+    ### **Section 2: Company Background**
+    Extract every piece of organizational context about the issuer, including:
+    - Full organization name (legal name, aliases, abbreviations).  
+    - Company type (public, private, nonprofit, government, etc.).  
+    - Headquarters, office locations, regions served, or jurisdiction.  
+    - Mission, vision, mandate, history, values, or strategic priorities.  
+    - Size, capacity, funding sources, budgets, staff counts.  
+    - Programs, services, lines of business, or operational areas.  
+    - Governance, leadership, key stakeholders, partner organizations.  
+    - DEI or policy priorities (if present).  
+    Collect all background across the entire document, even if scattered.
+
+    **Explicit Exclusions**  
+    - NO submission rules  
+    - NO proposal requirements  
+    - NO selection criteria  
+    - NO deadlines or contacts  
+
+    ### **Section 3: Submission Details & Requirements**
+    Extract every procedural, compliance, and submission-related detail, such as:
+    - Proposal due dates, times, and delivery deadlines.  
+    - Submission methods (email, portal, hardcopy, courier, etc.).  
+    - Physical or digital submission addresses.  
+    - Required formats (PDF, Word, binders, number of copies, etc.).  
+    - Mandatory forms, certifications, affidavits, or attachments.  
+    - Eligibility rules and compliance requirements.  
+    - Evaluation criteria, scoring, selection or award process.  
+    - Contacts: names, titles, phone numbers, emails.  
+    - Timelines, Q&A policies, pre-bid meetings, vendor requirements.  
+    Combine all procedural content into a single comprehensive section.
+
+    ============================================================
+     **OUTPUT FORMAT (STRICT)**
+    ============================================================
 
     Section 1: Purpose of the RFP  
-    [content]  
+    [full extracted content]
 
     Section 2: Company Background  
-    [content]  
+    [full extracted content]
 
     Section 3: Submission Details & Requirements  
-    [content]  
+    [full extracted content]
 
-    ---
-
-    RFP Text:
+    ============================================================
+     **SOURCE RFP TEXT**
+    ============================================================
     \"\"\"
     {rfp_text}
     \"\"\"
     """
 
     system_prompt = (
-        "You extract purpose, background, and submission details from RFPs into separate sections."
+        "You are a senior RFP extraction analyst. You extract purpose, background, and submission "
+        "requirements from RFPs with perfect accuracy, zero hallucinations, and strict adherence to sections."
     )
 
     return chat_model(
         model="gpt-4o-mini",
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        temperature=0.2,  
-        max_tokens=2200   
+        temperature=0.1,
+        max_tokens=2200
     )
 
 def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str:
@@ -395,72 +422,6 @@ def verify_password(plain_password, hashed_password):
 def hash_password(password):
     return pwd_context.hash(password)
 
-# def get_similar_context(question: str, top_k: int = 5):
-#     """
-#     Retrieve both summaries and detailed chunks from Pinecone for Hybrid KB.
-#     Returns combined context and sources.
-#     """
-#     embedding = client.embeddings.create(
-#         input=[question],
-#         model="text-embedding-3-small"  
-#     ).data[0].embedding
-
-#     results = index.query(
-#         vector=embedding,
-#         top_k=top_k * 2, 
-#         include_metadata=True
-#     )
-
-#     summaries = []
-#     chunks = []
-#     for match in results["matches"]:
-#         if match["metadata"].get("type") == "summary":
-#             summaries.append(match)
-#         else:
-#             chunks.append(match)
-
-#     summaries = summaries[:top_k]
-#     chunks = chunks[:top_k]
-
-#     context_texts = []
-#     context_texts.extend([m["metadata"]["text"] for m in summaries])
-#     context_texts.extend([m["metadata"]["text"] for m in chunks])
-
-#     sources = [
-#         {
-#             "score": match["score"],
-#             "document_id": match["metadata"].get("document_id"),
-#             "filename": match["metadata"].get("filename"),
-#             "category": match["metadata"].get("category"),
-#             "type": match["metadata"].get("type"),
-#             "snippet": match["metadata"].get("text")[:300]  # limit snippet length
-#         }
-#         for match in summaries + chunks
-#     ]
-
-#     return "\n".join(context_texts), sources
-
-# def generate_answer_with_context(question: str, context: str) -> str: 
-#     prompt = f"""
-#     Answer the following question based only on the context below:
-
-#     Context:
-#     {context}
-
-#     Question: {question}
-#     Answer:
-#     """
-#     response = client.chat.completions.create(
-#         model="gpt-4o-mini",
-#         messages=[
-#             {"role": "system", "content": "You are a helpful assistant generating answers for RFP questions."},
-#             {"role": "user", "content": prompt}
-#         ],
-#         temperature=0.2,
-#         max_tokens=800
-#     )
-#     return response.choices[0].message.content.strip()
-
 def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
     """
     Retrieve RFP-specific chunks from Pinecone using file_id metadata filter.
@@ -494,13 +455,48 @@ def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pinecone retrieval failed: {str(e)}")
 
-def generate_answer_with_context(question: str, context: str) -> str:
-    """
-    Use OpenAI LLM to generate an answer based on RFP-specific context.
-    """
+def generate_answer_with_context(question: str, context: str, short_name: str) -> str:
     prompt = f"""
-    You are an expert in responding to RFP (Request for Proposal) questions.
-    Use only the provided context to answer accurately and concisely.
+    You are an expert proposal writer. You write RFP responses **only using the provided context**.
+
+    ### Client Name Rule (MANDATORY)
+    - Refer to the issuer exclusively as "{short_name}".
+    - Never use “the client”.
+    - Never guess or invent a different name.
+
+    ### Voice & Point of View (MANDATORY)
+    - Use “we” or “our”.
+    - Never use “I”.
+    - Never refer to Ringer in third person.
+
+    ### Pricing Rules (MANDATORY)
+    - Ringer uses flat-rate pricing only.
+    - Never mention hourly rates, per-hour billing, or hourly estimates.
+    - Do NOT generate or assume any hourly cost structure.
+    - If the context mentions hourly pricing, rewrite it into a flat-rate model without creating specific prices.
+
+    ### Subcontractor / Vendor Operating Model (MANDATORY)
+    - Ringer delivers services through **subcontractors and external vendors**.
+    - This is a core part of how Ringer operates.
+    - When describing service delivery, staffing, capabilities, or processes:
+        - reflect that subcontractors/vendors are used.
+        - never imply Ringer relies solely on in-house full-time staff.
+    - Keep descriptions accurate and high-level unless the context specifies otherwise.
+
+    ### Accuracy Rules
+    - Use ONLY the information in the context.
+    - If the context lacks the information, write:
+      “We do not have enough information to provide that detail based on the available context.”
+
+    ### Tone & Style
+    - Professional, concise, confident.
+    - No vague marketing language.
+
+    ### Formatting
+    - No bullet points unless context explicitly requires it.
+    - Do NOT mention “context” or “question”.
+
+    ----
 
     Context:
     {context}
@@ -508,20 +504,19 @@ def generate_answer_with_context(question: str, context: str) -> str:
     Question:
     {question}
 
-    Answer:
+    Final Answer:
     """
 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant for RFP responses."},
+                {"role": "system", "content": "You are a highly skilled RFP response specialist who strictly follows instructions."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
-            max_tokens=800
+            max_tokens=1000
         )
-
         return response.choices[0].message.content.strip()
 
     except Exception as e:
@@ -662,6 +657,31 @@ def delete_rfp_embeddings(file_id: int):
     except Exception as e:
         print(f" Error deleting embeddings for RFP {file_id}: {e}")
 
+def get_short_name(filename: str) -> str:
+    """
+    Extract short client name from PDF filename.
+    Examples:
+        'McLean_Hospital_RFP.pdf' -> 'McLean'
+        'Acme_Inc_Submission.pdf' -> 'Acme'
+        'State_of_California_Dept_Health.pdf' -> 'California'
+    """
+    name = filename.rsplit('.', 1)[0]
+
+    name = name.replace('_', ' ').replace('-', ' ')
+
+    tokens = name.split()
+
+    noise = {
+        "hospital", "inc", "llc", "ltd", "company", "co", "services",
+        "dept", "department", "state", "university", "institute",
+        "health", "center", "centre", "proposal", "rfp", "submission"
+    }
+
+    cleaned = [t for t in tokens if t.lower() not in noise]
+
+    if not cleaned:
+        return "the organization"
+    return cleaned[0].title()
 
 
 

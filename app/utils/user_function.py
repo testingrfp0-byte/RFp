@@ -1,9 +1,11 @@
 from sqlalchemy.orm import Session
-from app.models.rfp_models import RFPQuestion, Reviewer, User,ReviewerAnswerVersion
-from fastapi import HTTPException
+from app.models.rfp_models import RFPQuestion, Reviewer, User,ReviewerAnswerVersion,RFPDocument
+from fastapi import HTTPException,status
 from app.services.llm_service import get_similar_context,generate_answer_with_context
 from datetime import datetime
 from app.api.routes.utils import clean_answer
+
+from app.services.llm_service import analyze_answer_score_only,get_short_name
 
 def assigned_questions(db: Session, current_user: User):
     try:
@@ -42,47 +44,6 @@ def assigned_questions(db: Session, current_user: User):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# def generate_answers_service(db: Session, current_user: User, question_id: int):
-#     try:
-#         assignment = (
-#             db.query(RFPQuestion, Reviewer)
-#             .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
-#             .filter(
-#                 Reviewer.user_id == current_user.id,
-#                 Reviewer.ques_id == question_id
-#             )
-#             .first()
-#         )
-
-#         if assignment is None:
-#             raise HTTPException(status_code=403, detail="Question not assigned to current user")
-
-#         question, reviewer = assignment
-
-#         contexts, sources = get_similar_context(question.question_text)
-
-#         answer = generate_answer_with_context(question.question_text, contexts)
-#         answer = clean_answer(answer)
-
-
-#         version = ReviewerAnswerVersion(
-#             user_id=current_user.id,
-#             ques_id=question_id,
-#             answer=answer
-#         )
-#         db.add(version)
-#         reviewer.ans = answer
-#         db.commit()
-
-#         return {
-#             "question_id": question.id,
-#             "question_text": question.question_text,
-#             "answer": answer,
-#             "sources": sources 
-#         }
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
-
 def generate_answers_service(db: Session, current_user, question_id: int):
     try:
         assignment = (
@@ -99,12 +60,17 @@ def generate_answers_service(db: Session, current_user, question_id: int):
             raise HTTPException(status_code=403, detail="Question not assigned to current user")
 
         question, reviewer = assignment
-
         rfp_id = question.rfp_id
+
+        rfp_document = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+        if not rfp_document:
+            raise HTTPException(status_code=404, detail="RFP Document not found")
+
+        short_name = get_short_name(rfp_document.filename)
 
         contexts, sources = get_similar_context(question.question_text, rfp_id)
 
-        answer = generate_answer_with_context(question.question_text, contexts)
+        answer = generate_answer_with_context(question.question_text, contexts, short_name)
         answer = clean_answer(answer)
 
         version = ReviewerAnswerVersion(
@@ -300,6 +266,47 @@ def filter_service(db: Session, current_user: User,status: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def analyze_single_question(rfp_id: int, question_id: int, db: Session, current_user: User):
+    try:
+        question = db.query(RFPQuestion).filter(
+            RFPQuestion.id == question_id,
+            RFPQuestion.rfp_id == rfp_id
+        ).first()
 
+        if not question:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Question not found for the provided RFP."
+            )
+
+        reviewer_answer = db.query(Reviewer).filter(
+            Reviewer.user_id == current_user.id,
+            Reviewer.ques_id == question_id,
+            Reviewer.ans.isnot(None),
+            Reviewer.ans != ""
+        ).first()
+
+        if not reviewer_answer:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="You have not submitted an answer for this question."
+            )
+
+        score = analyze_answer_score_only(
+            question_text=question.question_text,
+            answer_text=reviewer_answer.ans
+        )
+
+        return {
+            "rfp_id": rfp_id,
+            "question_id": question_id,
+            "question_text": question.question_text,
+            "user_id": current_user.id,
+            "answer": reviewer_answer.ans,
+            "score": score
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 

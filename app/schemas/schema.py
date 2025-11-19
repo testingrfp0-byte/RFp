@@ -18,6 +18,7 @@ class UserOut(BaseModel):
     username: str
     email: str
     role: str
+    is_verified: bool
 
     class Config:
         from_attributes = True
