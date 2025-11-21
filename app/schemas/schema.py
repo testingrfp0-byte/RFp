@@ -63,7 +63,7 @@ class QuestionOut(BaseModel):
     question_text: str
 
 class GroupedRFPQuestionOut(BaseModel):
-    section: str
+    section: Optional[str] = None
     questions: List[QuestionOut]
 
 class RFPDocumentGroupedQuestionsOut(BaseModel):
@@ -144,7 +144,8 @@ class PasswordUpdateRequest(BaseModel):
     old_password: str
     new_password: str
 
-
+class QuestionInput(BaseModel):
+    questions: Optional[List[str]] = None
 
 
 

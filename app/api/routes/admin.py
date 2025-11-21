@@ -15,7 +15,7 @@ from app.db.database import get_db, Base, engine
 from app.schemas.schema import (
     FileDetails, AssignReviewer, ReviewerOut, AdminEditRequest,
     RFPDocumentGroupedQuestionsOut, NotificationRequest,
-    reviwerdelete, ChatInputRequest, ReassignReviewerRequest, GroupedRFPQuestionOut,QuestionOut)
+    reviwerdelete, ChatInputRequest, ReassignReviewerRequest, GroupedRFPQuestionOut,QuestionOut,QuestionInput)
 from app.models.rfp_models import User, Reviewer, RFPDocument, RFPQuestion
 from app.services.llm_service import client 
 from app.api.routes.utils import get_current_user
@@ -29,7 +29,7 @@ from app.utils.admin_function import (
     admin_filter_questions_by_status_service, analyze_overall_score_service,
     view_rfp_document_service, edit_question_by_admin_service,
     update_profile_service, delete_reviewer_service,
-    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents
+    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents,add_ques
 )
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -550,3 +550,12 @@ def upload_library_new(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+    
+@router.post("/add/questions/{rfp_id}")
+def add_questions(
+    rfp_id: int,
+    request: QuestionInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return add_ques(rfp_id, request, db, current_user)

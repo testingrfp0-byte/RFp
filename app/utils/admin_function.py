@@ -16,13 +16,13 @@ from app.models.rfp_models import (
 )
 from app.services.llm_service import (
     extract_text_from_pdf, extract_company_background_from_rfp,
-    extract_questions_with_llm, summarize_results_with_llm,
+    extract_questions_with_llm, get_next_index, summarize_results_with_llm,
     generate_search_queries, search_with_serpapi, analyze_answer_score_only,
     client, parse_rfp_summary, get_embedding, extract_text_from_file,
     get_similar_context,generate_summary,delete_rfp_embeddings
 )
 from app.schemas.schema import (
-    AssignReviewer, ReviewerOut, AdminEditRequest, UserOut,reviwerdelete, ReassignReviewerRequest
+    AssignReviewer, ReviewerOut, AdminEditRequest, UserOut,reviwerdelete, ReassignReviewerRequest,QuestionInput
 )
 from app.config import pc,index,UPLOAD_FOLDER
 
@@ -811,9 +811,20 @@ async def regenerate_answer_with_chat_service(request, db: Session):
         "You are a senior proposal writer. "
         "Your task is to refine and regenerate proposal answers based on the user’s feedback, "
         "while also grounding the response in the provided knowledge base context. "
-        "Preserve the original structure and intent, but improve clarity, flow, and professionalism. "
+
+        "Rewrite Mode (Highest Priority): "
+        "If the reviewer feedback includes instructions such as 'rewrite', 'shorten', "
+        "'summarize', 'reduce word count', 'make concise', or 'rephrase', you MUST follow "
+        "those rewrite instructions exactly. Ignore persuasion, structure preservation, and "
+        "other styling rules unless the user explicitly requests them. If shortening is "
+        "requested, reduce the word count by the requested amount. Do not add content. "
+        "Do not expand the text. Preserve the meaning only. "
+
+        "Preserve the original structure and intent, but improve clarity, flow, and professionalism "
+        "when the user is NOT asking for a rewrite or reduction. "
         "Incorporate all requested changes accurately and consistently. "
-        "Ensure the writing style is formal, persuasive, and suitable for RFP submissions. "
+        "Ensure the writing style is formal, persuasive, and suitable for RFP submissions "
+        "unless in rewrite mode. "
         "Do not include or repeat the original question text. "
         "Do not use markdown symbols, headings, or special formatting; produce plain text only. "
         "Avoid redundancy and ensure the final output reads as a polished, client-ready response. "
@@ -1028,3 +1039,59 @@ def upload_documents(files, project_name, category, current_user, db: Session):
         })
 
     return uploaded_docs
+
+def add_ques(
+    rfp_id: int,
+    request: QuestionInput,
+    db: Session,
+    current_user: User
+):
+    try:
+        if current_user.role.lower() != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Only admins can add questions"
+            )
+
+        rfp = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+        if not rfp:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="RFP not found"
+            )
+
+        if not request.questions or len(request.questions) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please provide at least one question"
+            )
+
+        created_ids = []
+
+        for q in request.questions:
+            que_with_index = get_next_index(rfp_id, current_user.id, q, db)
+
+            new_question = RFPQuestion(
+                rfp_id=rfp_id,
+                question_text=que_with_index,
+                admin_id=current_user.id
+            )
+            db.add(new_question)
+            db.flush()
+            created_ids.append(new_question.id)
+
+        db.commit()
+
+        return {
+            "message": "Questions added successfully",
+            "question_ids": created_ids,
+            "count": len(created_ids)
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
+

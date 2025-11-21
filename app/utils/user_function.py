@@ -266,6 +266,49 @@ def filter_service(db: Session, current_user: User,status: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# def analyze_single_question(rfp_id: int, question_id: int, db: Session, current_user: User):
+#     try:
+#         question = db.query(RFPQuestion).filter(
+#             RFPQuestion.id == question_id,
+#             RFPQuestion.rfp_id == rfp_id
+#         ).first()
+
+#         if not question:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="Question not found for the provided RFP."
+#             )
+
+#         reviewer_answer = db.query(Reviewer).filter(
+#             Reviewer.user_id == current_user.id,
+#             Reviewer.ques_id == question_id,
+#             Reviewer.ans.isnot(None),
+#             Reviewer.ans != ""
+#         ).first()
+
+#         if not reviewer_answer:
+#             raise HTTPException(
+#                 status_code=status.HTTP_400_BAD_REQUEST, 
+#                 detail="You have not submitted an answer for this question."
+#             )
+
+#         score = analyze_answer_score_only(
+#             question_text=question.question_text,
+#             answer_text=reviewer_answer.ans
+#         )
+
+#         return {
+#             "rfp_id": rfp_id,
+#             "question_id": question_id,
+#             "question_text": question.question_text,
+#             "user_id": current_user.id,
+#             "answer": reviewer_answer.ans,
+#             "score": score
+#         }
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
 def analyze_single_question(rfp_id: int, question_id: int, db: Session, current_user: User):
     try:
         question = db.query(RFPQuestion).filter(
@@ -281,20 +324,14 @@ def analyze_single_question(rfp_id: int, question_id: int, db: Session, current_
 
         reviewer_answer = db.query(Reviewer).filter(
             Reviewer.user_id == current_user.id,
-            Reviewer.ques_id == question_id,
-            Reviewer.ans.isnot(None),
-            Reviewer.ans != ""
+            Reviewer.ques_id == question_id
         ).first()
 
-        if not reviewer_answer:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="You have not submitted an answer for this question."
-            )
+        answer_text = reviewer_answer.ans if reviewer_answer and reviewer_answer.ans else ""
 
         score = analyze_answer_score_only(
             question_text=question.question_text,
-            answer_text=reviewer_answer.ans
+            answer_text=answer_text
         )
 
         return {
@@ -302,11 +339,10 @@ def analyze_single_question(rfp_id: int, question_id: int, db: Session, current_
             "question_id": question_id,
             "question_text": question.question_text,
             "user_id": current_user.id,
-            "answer": reviewer_answer.ans,
+            "answer": answer_text,
             "score": score
         }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 

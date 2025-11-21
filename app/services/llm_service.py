@@ -9,9 +9,10 @@ from app.config import client, index,SERPAPI_KEY
 from pptx import Presentation
 from PyPDF2 import PdfReader
 from fastapi import HTTPException
+from app.models import *
 import re
+import math
 import docx
-
 
 load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -294,96 +295,111 @@ def search_with_serpapi(query: str):
 
 def extract_questions_with_llm(pdf_text: str) -> dict:
     prompt = f"""
-        You are a **Senior RFP Analysis Expert** with extensive experience in analyzing government and corporate procurement documents. Your task is to **extract every explicit or implied vendor response requirement** from the provided RFP text with utmost accuracy.
+        You are a **Senior RFP Analysis Expert** with extensive experience in analyzing government and corporate procurement documents.  
+        Your task is to **extract every explicit or implicit vendor response requirement** from the provided RFP text with complete accuracy.
 
         ---
 
-        ###  Objective:
-        Extract **every question, instruction, or directive** that requires a vendor to provide information, documentation, confirmation, or explanation in their proposal.
+        ###   OBJECTIVE
+        Extract **every question, instruction, requirement, or directive** that obligates the vendor to provide information, documents, proofs, demonstrations, or explanations in their proposal.
+
+        This includes:
+        - Explicit questions  
+        - Implicit response requirements  
+        - “Vendor shall…” statements  
+        - “Offeror must…” statements  
+        - “Proposal must include…” statements  
+        - “Vendor must demonstrate/submit/provide…”  
+        - Requirements hidden inside narrative text  
+        - Required attachments  
 
         ---
 
-        ###  Do NOT:
-        - Do **not** summarize, paraphrase, or alter the wording of any question or instruction.
-        - Do **not** infer or invent questions not explicitly or implicitly requiring a vendor response.
-        - Do **not** include:
-        - Administrative or procedural details (e.g., submission dates, formats, or contact info).
-        - References or appendices instructions (e.g., “Include three client references”).
-        - Informational context that does **not** request a vendor action (e.g., “The agency seeks to improve outreach”).
-        - Background, introduction, or goal statements unless they **explicitly** ask for a response.
-        - Rhetorical or explanatory questions that are not vendor-facing (e.g., “Why is this important?”).
+        ###  INCLUDE HIDDEN VENDOR REQUIREMENTS (CRITICAL)
+        You MUST extract all vendor requirements even if they are NOT written as questions:
+
+        - **Vendor Selection Criteria**  
+        - **Evaluation Criteria**  
+        - **Scoring Criteria**  
+        - **Mandatory Submission Requirements**  
+        - **Required Attachments & Certifications**  
+        - **Qualifications Requirements**  
+        - **Experience Requirements**  
+        - **Portfolio Requirements**  
+        - **Technical / Operational Capability Requirements**  
+        - **Compliance Requirements**  
+
+        If the document contains a section such as **“Vendor Selection Criteria”**,  
+        **EVERY bullet point or line in that section MUST be extracted as a vendor response requirement.**
+
+        Example conversions:
+        - “Existing Portfolio” → “Provide your existing portfolio.”
+        - “Experience in education projects” → “Demonstrate experience in education projects.”
+        - “Technical capability” → “Demonstrate technical capability.”
 
         ---
 
-        ###  Do:
-        - Extract **verbatim** text for each question or instruction, including punctuation and capitalization exactly as in the RFP.
-        - Treat **any directive phrased as a statement that clearly expects a vendor response** as a question.  
-        Examples:
-        - “The vendor shall provide…” → extract as a response-required instruction.  
-        - “Offeror must demonstrate…” → extract as a required response.  
-        - Preserve **section hierarchy, numbering, and structure** from the source RFP.
-        - Use and extend the numbering structure logically:
-        - “1.2 Proposal Requirements” → “1.2.1”, “1.2.2”, etc.
-        - “III.A Technical Approach” → “III.A.1”, “III.A.2”, etc.
-        - “I Introduction” → “I.1”, “I.2”, etc.
-        - Restart numbering at **1** within each new section.
-        - Group extracted questions **under their exact section headings** and **include the original section number/title**.
-        - If a section includes **no vendor-response elements**, **omit** it from the output.
-        - If the document lacks formal numbering or structure, group under **“General Questions” (G.1, G.2, etc.)**.
+        ###  DO NOT EXTRACT (ADMINISTRATIVE ONLY)
+        Do **NOT** include:
+        - Submission dates  
+        - Delivery addresses  
+        - Contact details  
+        - Formatting instructions (PDF, Word, etc.)  
+        - Page limits, font sizes  
+        - Narrative background with **no vendor action**  
+        - General goals or intentions with **no vendor obligation**  
+
+        BUT…
+
+        ###  IMPORTANT EXCEPTION  
+        If ANY administrative or narrative text contains a vendor obligation (e.g., “Vendor must submit X”), you MUST extract it.
 
         ---
 
-        ###  Edge Case Handling:
-        - If mixed content appears (narrative + questions), include **only the explicit vendor-facing directives**.
-        - Recognize both **direct** (“Describe your process”) and **implicit** (“Vendor shall provide…”) vendor response requirements.
-        - Handle nested numbering or outline styles accurately (e.g., “1.2.3.1” or “III.B.1.a”).
-        - For bullet points, lists, or tables, extract each question/instruction as a **single clean text string**, ignoring formatting unless it changes meaning.
-        - Preserve **logical hierarchy** even when numbering is inconsistent or missing by analyzing indentation, font cues (if provided), or section headers.
+        ###  EXTRACTION RULES
+        - Extract **verbatim text** where possible.
+        - Do NOT summarize or rewrite unless needed to convert a bullet to a clean text line.
+        - Preserve section hierarchy and numbering when present.
+        - If numbering is missing, create logical numbering (e.g., “G.1”, “G.2”).
+        - Group extracted items under their **exact section name** from the source RFP.
+        - Restart numbering within each section (e.g., “2.1.1”, “2.1.2”).
 
         ---
 
-        ###  Output Format:
-        Return a **strict JSON object** (no Markdown, no commentary, no explanations).
+        ###  OUTPUT FORMAT (STRICT JSON)
+        Return a **JSON object** ONLY (no markdown).
 
-        Each section in the JSON must contain:
-        - `"section"` → exact section title and number as written in the RFP.
-        - `"questions"` → list of extracted, verbatim vendor-response items prefixed with their section-based numbering.
+        Each section must have:
+        - "section": exact section title
+        - "questions": a list of extracted vendor requirements
 
-        ---
-
-        ###  Example Output:
-        {{
-        "1": {{
+        Example:
+        {
+        "1": {
             "section": "1.1 Scope of Work",
             "questions": [
-            "1.1.1 Describe your agency's approach to developing a comprehensive media strategy.",
-            "1.1.2 Provide a sample timeline for implementation."
+            "1.1.1 Describe your proposed solution.",
+            "1.1.2 Provide all relevant past performance examples."
             ]
-        }},
-        "2": {{
-            "section": "2.1 Proposal Requirements",
+        },
+        "2": {
+            "section": "Vendor Selection Criteria",
             "questions": [
-            "2.1.1 Outline your firm's qualifications and experience.",
-            "2.1.2 Explain how your solution addresses the stated objectives."
+            "2.1.1 Provide your existing portfolio.",
+            "2.1.2 Demonstrate technical capability.",
+            "2.1.3 Demonstrate experience in education projects."
             ]
-        }},
-        "3": {{
-            "section": "III.A Technical Approach",
-            "questions": [
-            "III.A.1 Describe your proposed system architecture.",
-            "III.A.2 Provide your data protection and cybersecurity protocols."
-            ]
-        }}
-        }}
+        }
+        }
 
         ---
 
-        ###  Input:
-        RFP Document Text:
+        ### 📘 INPUT RFP TEXT
         \"\"\"
         {pdf_text}
         \"\"\"
         """
+
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -459,12 +475,18 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
     prompt = f"""
     You are an expert proposal writer. You write RFP responses **only using the provided context**.
 
+    ### Mandatory RFP Usage Rule
+    - Always reference and pull specific details from the provided RFP context.
+    - Use the RFP's exact requirements, instructions, constraints, and expectations whenever answering.
+    - Answers MUST be specific and directly tied to what {short_name} is asking for in the RFP.
+    - Do not give generic responses. Always anchor your answer to the RFP text.
+
     ### Client Name Rule (MANDATORY)
     - Refer to the issuer exclusively as "{short_name}".
     - Never use “the client”.
     - Never guess or invent a different name.
 
-    ### Voice & Point of View (MANDATORY)
+    ### Voice & Point of View (MANDMANDATORY)
     - Use “we” or “our”.
     - Never use “I”.
     - Never refer to Ringer in third person.
@@ -492,6 +514,16 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
     - Professional, concise, confident.
     - No vague marketing language.
 
+    ### Concise Writing Rules (MANDATORY)
+    - Your writing must be concise and direct.
+    - Eliminate unnecessary words and avoid wordy sentences.
+    - Avoid starting sentences with "To..." or long prepositional openings.
+    - Use active voice and straightforward sentence structure.
+    - Avoid filler phrases such as "in order to", "as part of", "with the intention of".
+    - Reduce sentence length by 20–30% without losing meaning.
+    - Do not repeat ideas in different words.
+    - Aim for tight, high-impact, business-professional writing.
+
     ### Formatting
     - No bullet points unless context explicitly requires it.
     - Do NOT mention “context” or “question”.
@@ -506,6 +538,7 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
 
     Final Answer:
     """
+
 
     try:
         response = client.chat.completions.create(
@@ -683,8 +716,49 @@ def get_short_name(filename: str) -> str:
         return "the organization"
     return cleaned[0].title()
 
+def bump_version(version: str) -> str:
+    if not isinstance(version, str) or not version.strip():
+        return None
 
+    parts = version.strip().split(".")
 
+    if not all(p.isdigit() for p in parts):
+        return None
 
+    if len(parts) == 1:
+        (major,) = map(int, parts)
+        return str(major + 1)
+
+    if len(parts) == 2:
+        major, minor = map(int, parts)
+        return f"{major}.{minor + 1}"
+
+    if len(parts) == 3:
+        major, minor, patch = map(int, parts)
+        return f"{major}.{minor}.{patch + 1}"
+
+    return None
+
+def get_next_index(rfp_id: int, user_id: int, question: str, db: Session) -> float:
+    last_question = (
+        db.query(RFPQuestion)
+        .filter(
+            RFPQuestion.rfp_id == rfp_id,
+            RFPQuestion.admin_id == user_id
+        )
+        .order_by(RFPQuestion.id.desc())
+        .first() 
+    ).question_text
+
+    index = last_question.split(" ")[0] if last_question else None
+
+    new_index = None
+    if index:
+        try:
+            new_index = bump_version(index)
+        except Exception as e:
+            new_index = ""
+    
+    return f"{new_index} {question}"
 
 
