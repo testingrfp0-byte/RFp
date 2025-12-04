@@ -29,6 +29,7 @@ def assigned_questions(db: Session, current_user: User):
                 "user_id": reviewer.user_id, 
                 "rfp_id": question.rfp_id,
                 "filename": question.rfp.filename,
+                "project_name": question.rfp.project_name,
                 "question_id": question.id,
                 "question_text": question.question_text,
                 "section": question.section,

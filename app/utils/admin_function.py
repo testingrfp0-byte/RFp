@@ -25,6 +25,7 @@ from app.schemas.schema import (
     AssignReviewer, ReviewerOut, AdminEditRequest, UserOut,reviwerdelete, ReassignReviewerRequest,QuestionInput
 )
 from app.config import pc,index,UPLOAD_FOLDER
+import traceback
 
 async def process_rfp_file(file: UploadFile, project_name: str, db: Session, current_user):
     try:
@@ -136,6 +137,7 @@ async def process_rfp_file(file: UploadFile, project_name: str, db: Session, cur
         }
 
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 def fetch_file_details(db: Session):
@@ -404,6 +406,39 @@ def get_assign_user_status_service(db: Session, current_user: User):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# def delete_rfp_document_service(rfp_id: int, db: Session, current_user: User):
+#     try:
+#         if current_user.role != "admin":
+#             raise HTTPException(
+#                 status_code=status.HTTP_401_UNAUTHORIZED,
+#                 detail="Only admins can delete docs."
+#             )
+
+#         rfp = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+#         if not rfp:
+#             raise HTTPException(
+#                 status_code=404,
+#                 detail="RFP document not found."
+#             )
+#         if os.path.exists(rfp.file_path):
+#             os.remove(rfp.file_path)
+#             # print(f" Deleted file from disk: {rfp.file_path}")
+
+#         delete_rfp_embeddings(rfp_id)
+
+#         db.delete(rfp)
+#         db.commit()
+
+#         return {"message": "RFP document and all related embeddings deleted successfully."}
+
+#     except HTTPException as http_exc:
+#         raise http_exc
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to delete RFP document: {str(e)}"
+#         ) 
+
 def delete_rfp_document_service(rfp_id: int, db: Session, current_user: User):
     try:
         if current_user.role != "admin":
@@ -418,24 +453,22 @@ def delete_rfp_document_service(rfp_id: int, db: Session, current_user: User):
                 status_code=404,
                 detail="RFP document not found."
             )
-        if os.path.exists(rfp.file_path):
-            os.remove(rfp.file_path)
-            # print(f" Deleted file from disk: {rfp.file_path}")
 
-        delete_rfp_embeddings(rfp_id)
-
-        db.delete(rfp)
+        rfp.is_deleted = True
+        rfp.deleted_at = datetime.utcnow()
         db.commit()
 
-        return {"message": "RFP document and all related embeddings deleted successfully."}
+        return {
+            "message": "RFP moved to trash. Work-in-progress is safely retained."
+        }
 
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to delete RFP document: {str(e)}"
-        ) 
+            detail=f"Failed to move RFP to trash: {str(e)}"
+        )
 
 async def remove_user_service(ques_id: int, user_id: int, db: Session, current_user: User):
     try:
@@ -957,7 +990,7 @@ def upload_documents(files, project_name, category, current_user, db: Session):
 
     for file in files:
         file_ext = os.path.splitext(file.filename)[1].lower()
-        if file_ext not in [".pdf", ".docx", ".pptx"]:
+        if file_ext not in [".pdf", ".docx", ".pptx",".xlsx",".xls"]:
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported file format: {file.filename}"
@@ -1093,5 +1126,116 @@ def add_ques(
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected error: {str(e)}"
+        )
+
+def restore_rfp_doc(rfp_id: int, db: Session, current_user: User):
+    try:
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Only admins can restore docs."
+            )
+
+        rfp = (
+            db.query(RFPDocument)
+            .filter(RFPDocument.id == rfp_id, RFPDocument.is_deleted == True)
+            .first()
+        )
+
+        if not rfp:
+            raise HTTPException(
+                status_code=404,
+                detail="RFP not found in Trash."
+            )
+
+        rfp.is_deleted = False
+        rfp.deleted_at = None
+        db.commit()
+
+        return {"message": "RFP restored successfully."}
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to restore RFP document: {str(e)}"
+        )
+    
+def permanent_delete_rfp(rfp_id: int, db: Session, current_user: User):
+    try:
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Only admins can permanently delete docs."
+            )
+
+        rfp = (
+            db.query(RFPDocument)
+            .filter(RFPDocument.id == rfp_id, RFPDocument.is_deleted == True)
+            .first()
+        )
+
+        if not rfp:
+            raise HTTPException(
+                status_code=404,
+                detail="RFP not found in Trash."
+            )
+
+        if rfp.file_path and os.path.exists(rfp.file_path):
+            os.remove(rfp.file_path)
+
+        delete_rfp_embeddings(rfp_id)
+
+        db.delete(rfp)
+        db.commit()
+
+        return {"message": "RFP permanently deleted."}
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to permanently delete RFP document: {str(e)}"
+        )
+
+def get_trash_documents(db: Session, current_user: User):
+    try:
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=401,
+                detail="Only admins can view Trash."
+            )
+
+        deleted_docs = (
+            db.query(RFPDocument)
+            .filter(RFPDocument.is_deleted == True)
+            .order_by(RFPDocument.deleted_at.desc())
+            .all()
+        )
+
+        return [
+            {
+                "id": doc.id,
+                "filename": doc.filename,
+                "project_name": doc.project_name,
+                "category": doc.category,
+                "uploaded_at": doc.uploaded_at,
+                "deleted_at": doc.deleted_at,
+                "days_left": (
+                    7 - (datetime.utcnow() - doc.deleted_at).days
+                    if doc.deleted_at else None
+                )
+            }
+            for doc in deleted_docs
+        ]
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch trash list: {str(e)}"
         )
 

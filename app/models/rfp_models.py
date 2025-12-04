@@ -14,6 +14,8 @@ class RFPDocument(Base):
     admin_id = Column(Integer) 
     file_hash = Column(String, unique=True, nullable=False)
     project_name = Column(String, nullable=True)
+    is_deleted = Column(Boolean, default=False) #for trash
+    deleted_at = Column(DateTime, nullable=True) #for trash
 
     summary = relationship(
         "CompanySummary",
@@ -145,3 +147,4 @@ class ReviewerAnswerVersion(Base):
             ondelete="CASCADE"
         ),
     )
+   

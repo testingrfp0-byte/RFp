@@ -29,7 +29,7 @@ from app.utils.admin_function import (
     admin_filter_questions_by_status_service, analyze_overall_score_service,
     view_rfp_document_service, edit_question_by_admin_service,
     update_profile_service, delete_reviewer_service,
-    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents,add_ques
+    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents,add_ques,restore_rfp_doc,permanent_delete_rfp,get_trash_documents
 )
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -559,3 +559,26 @@ def add_questions(
     current_user: User = Depends(get_current_user)
 ):
     return add_ques(rfp_id, request, db, current_user)
+
+@router.post("/rfp/{rfp_id}/restore")
+def restore_rfp_document(
+    rfp_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return restore_rfp_doc(rfp_id, db, current_user)
+
+@router.delete("/rfp/{rfp_id}/permanent")
+def permanent_delete_doc(
+    rfp_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return permanent_delete_rfp(rfp_id, db, current_user)
+
+@router.get("/rfp/trash")
+def get_trash_doc(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return get_trash_documents(db, current_user)
