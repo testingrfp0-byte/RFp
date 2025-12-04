@@ -26,6 +26,8 @@ from app.schemas.schema import (
 )
 from app.config import pc,index,UPLOAD_FOLDER
 import traceback
+import uuid
+
 
 async def process_rfp_file(file: UploadFile, project_name: str, db: Session, current_user):
     try:
