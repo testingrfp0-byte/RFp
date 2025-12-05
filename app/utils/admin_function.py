@@ -146,6 +146,7 @@ def fetch_file_details(db: Session):
     try:
         documents = (
             db.query(RFPDocument)
+            .filter(RFPDocument.is_deleted == False)
             .filter(RFPDocument.category.isnot(None))
             .filter(func.trim(RFPDocument.category) != '')
             .all()
