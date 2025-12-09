@@ -15,7 +15,7 @@ from app.db.database import get_db, Base, engine
 from app.schemas.schema import (
     FileDetails, AssignReviewer, ReviewerOut, AdminEditRequest,
     RFPDocumentGroupedQuestionsOut, NotificationRequest,
-    reviwerdelete, ChatInputRequest, ReassignReviewerRequest, GroupedRFPQuestionOut,QuestionOut,QuestionInput)
+    reviwerdelete, ChatInputRequest, ReassignReviewerRequest, GroupedRFPQuestionOut,QuestionOut,QuestionInput,KeystoneCreateRequest,KeystoneUpdateRequest)
 from app.models.rfp_models import User, Reviewer, RFPDocument, RFPQuestion
 from app.services.llm_service import client 
 from app.api.routes.utils import get_current_user
@@ -29,7 +29,7 @@ from app.utils.admin_function import (
     admin_filter_questions_by_status_service, analyze_overall_score_service,
     view_rfp_document_service, edit_question_by_admin_service,
     update_profile_service, delete_reviewer_service,
-    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents,add_ques,restore_rfp_doc,permanent_delete_rfp,get_trash_documents
+    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents,add_ques,restore_rfp_doc,permanent_delete_rfp,get_trash_documents,create_keystone,get_keystone_form,modify_form_field,modify_partial_form,delete_keystone
 )
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -582,3 +582,46 @@ def get_trash_doc(
     current_user: User = Depends(get_current_user)
 ):
     return get_trash_documents(db, current_user)
+
+@router.post("/createform")
+def create_keystone_field(
+    request: KeystoneCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return create_keystone(request, db,current_user)
+
+@router.get("/form")
+def fetch_keystone_form(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    
+    return get_keystone_form(db,current_user)
+
+@router.put("/form/update/{field_id}")
+def update_form_field(
+    field_id: int,
+    request: KeystoneCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+
+    return modify_form_field(field_id, request, db,current_user)
+
+@router.patch("/form/update/{field_id}")
+def partial_update(
+    field_id: int,
+    request: KeystoneUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return modify_partial_form(field_id, request, db,current_user)
+
+@router.delete("/form/delete/{field_id}")
+def delete_form(
+    field_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return delete_keystone(field_id, db,current_user)

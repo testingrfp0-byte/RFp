@@ -5,7 +5,7 @@ from app.services.llm_service import get_similar_context,generate_answer_with_co
 from datetime import datetime
 from app.api.routes.utils import clean_answer
 
-from app.services.llm_service import analyze_answer_score_only,get_short_name
+from app.services.llm_service import analyze_answer_score_only,get_short_name,find_related_keystone
 
 def assigned_questions(db: Session, current_user: User):
     try:
@@ -45,6 +45,56 @@ def assigned_questions(db: Session, current_user: User):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# def generate_answers_service(db: Session, current_user, question_id: int):
+#     try:
+#         assignment = (
+#             db.query(RFPQuestion, Reviewer)
+#             .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
+#             .filter(
+#                 Reviewer.user_id == current_user.id,
+#                 Reviewer.ques_id == question_id
+#             )
+#             .first()
+#         )
+
+#         if assignment is None:
+#             raise HTTPException(status_code=403, detail="Question not assigned to current user")
+
+#         question, reviewer = assignment
+#         rfp_id = question.rfp_id
+
+#         rfp_document = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+#         if not rfp_document:
+#             raise HTTPException(status_code=404, detail="RFP Document not found")
+
+#         short_name = get_short_name(rfp_document.filename)
+
+#         contexts, sources = get_similar_context(question.question_text, rfp_id)
+
+#         answer = generate_answer_with_context(question.question_text, contexts, short_name)
+#         answer = clean_answer(answer)
+
+#         version = ReviewerAnswerVersion(
+#             user_id=current_user.id,
+#             ques_id=question_id,
+#             answer=answer
+#         )
+#         db.add(version)
+#         reviewer.ans = answer
+#         db.commit()
+
+#         return {
+#             "question_id": question.id,
+#             "question_text": question.question_text,
+#             "rfp_id": rfp_id,
+#             "answer": answer,
+#             "sources": sources
+#         }
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+#keystone add 
 def generate_answers_service(db: Session, current_user, question_id: int):
     try:
         assignment = (
@@ -62,16 +112,24 @@ def generate_answers_service(db: Session, current_user, question_id: int):
 
         question, reviewer = assignment
         rfp_id = question.rfp_id
+        question_text = question.question_text
 
         rfp_document = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
         if not rfp_document:
             raise HTTPException(status_code=404, detail="RFP Document not found")
 
         short_name = get_short_name(rfp_document.filename)
+        contexts, sources = get_similar_context(question_text, rfp_id)
 
-        contexts, sources = get_similar_context(question.question_text, rfp_id)
+        # Keystone Enhancement — ONLY this stays
+        keystone_info = find_related_keystone(db, question_text)
 
-        answer = generate_answer_with_context(question.question_text, contexts, short_name)
+        if keystone_info:
+            enhanced_context = f"{contexts}\n\nCompany Information:\n{keystone_info}"
+        else:
+            enhanced_context = contexts
+
+        answer = generate_answer_with_context(question_text, enhanced_context, short_name)
         answer = clean_answer(answer)
 
         version = ReviewerAnswerVersion(
@@ -79,13 +137,14 @@ def generate_answers_service(db: Session, current_user, question_id: int):
             ques_id=question_id,
             answer=answer
         )
+        
         db.add(version)
         reviewer.ans = answer
         db.commit()
 
         return {
             "question_id": question.id,
-            "question_text": question.question_text,
+            "question_text": question_text,
             "rfp_id": rfp_id,
             "answer": answer,
             "sources": sources
@@ -266,49 +325,6 @@ def filter_service(db: Session, current_user: User,status: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-# def analyze_single_question(rfp_id: int, question_id: int, db: Session, current_user: User):
-#     try:
-#         question = db.query(RFPQuestion).filter(
-#             RFPQuestion.id == question_id,
-#             RFPQuestion.rfp_id == rfp_id
-#         ).first()
-
-#         if not question:
-#             raise HTTPException(
-#                 status_code=status.HTTP_404_NOT_FOUND,
-#                 detail="Question not found for the provided RFP."
-#             )
-
-#         reviewer_answer = db.query(Reviewer).filter(
-#             Reviewer.user_id == current_user.id,
-#             Reviewer.ques_id == question_id,
-#             Reviewer.ans.isnot(None),
-#             Reviewer.ans != ""
-#         ).first()
-
-#         if not reviewer_answer:
-#             raise HTTPException(
-#                 status_code=status.HTTP_400_BAD_REQUEST, 
-#                 detail="You have not submitted an answer for this question."
-#             )
-
-#         score = analyze_answer_score_only(
-#             question_text=question.question_text,
-#             answer_text=reviewer_answer.ans
-#         )
-
-#         return {
-#             "rfp_id": rfp_id,
-#             "question_id": question_id,
-#             "question_text": question.question_text,
-#             "user_id": current_user.id,
-#             "answer": reviewer_answer.ans,
-#             "score": score
-#         }
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
 
 def analyze_single_question(rfp_id: int, question_id: int, db: Session, current_user: User):
     try:

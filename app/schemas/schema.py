@@ -147,6 +147,18 @@ class PasswordUpdateRequest(BaseModel):
 class QuestionInput(BaseModel):
     questions: Optional[List[str]] = None
 
+class KeystoneCreateRequest(BaseModel):
+    section: str
+    field_group: Optional[str] = None
+    field_detail: Optional[str] = None
+    field_type: Optional[str] = None
+    default_answer: Optional[str] = None
 
+class KeystoneUpdateRequest(BaseModel):
+    section: Optional[str] = None
+    field_group: Optional[str] = None
+    field_detail: Optional[str] = None
+    field_type: Optional[str] = None
+    default_answer: Optional[str] = None
 
 

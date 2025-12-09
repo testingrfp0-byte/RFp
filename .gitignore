@@ -68,3 +68,4 @@ __pycache__/*.pyc
 */__pycache__/*.pyc
 uploads/
 generated_docs/
+backup.py

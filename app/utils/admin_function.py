@@ -1,4 +1,5 @@
 import hashlib
+import asyncio
 import os,re
 import mimetypes
 import shutil
@@ -12,29 +13,158 @@ from sqlalchemy import func
 from app.config import mail_config,LOGIN_URL
 from app.models.rfp_models import (
     User, Reviewer, RFPDocument, RFPQuestion,
-    CompanySummary, ReviewerAnswerVersion
+    CompanySummary, ReviewerAnswerVersion,KeystoneData
 )
 from app.services.llm_service import (
     extract_text_from_pdf, extract_company_background_from_rfp,
     extract_questions_with_llm, get_next_index, summarize_results_with_llm,
     generate_search_queries, search_with_serpapi, analyze_answer_score_only,
     client, parse_rfp_summary, get_embedding, extract_text_from_file,
-    get_similar_context,generate_summary,delete_rfp_embeddings
+    get_similar_context,generate_summary,delete_rfp_embeddings,clean_extracted_text,
 )
 from app.schemas.schema import (
-    AssignReviewer, ReviewerOut, AdminEditRequest, UserOut,reviwerdelete, ReassignReviewerRequest,QuestionInput
+    AssignReviewer, ReviewerOut, AdminEditRequest, UserOut,reviwerdelete, ReassignReviewerRequest,QuestionInput,KeystoneCreateRequest,KeystoneUpdateRequest
 )
 from app.config import pc,index,UPLOAD_FOLDER
 import traceback
 import uuid
 
 
-async def process_rfp_file(file: UploadFile, project_name: str, db: Session, current_user):
+# async def process_rfp_file(file: UploadFile, project_name: str, db: Session, current_user):
+#     try:
+#         file_bytes = await file.read()
+#         file_hash = hashlib.md5(file_bytes).hexdigest()
+
+#         existing_rfp = db.query(RFPDocument).filter(RFPDocument.file_hash == file_hash).first()
+#         if existing_rfp:
+#             raise HTTPException(
+#                 status_code=208,
+#                 detail={
+#                     "status": "duplicate",
+#                     "message": "This RFP already exists.",
+#                     "existing_rfp_id": existing_rfp.id
+#                 }
+#             )
+
+#         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+#         dummy_filename = f"rfp_{timestamp}.pdf"
+#         file_path = os.path.join(UPLOAD_FOLDER, dummy_filename)
+#         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+#         with open(file_path, "wb") as f:
+#             f.write(file_bytes)
+
+#         rfp_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+#         rfp_text = clean_extracted_text(rfp_text)
+
+#         if not rfp_text.strip():
+#             return {"error": "PDF text is empty or not readable."}
+
+#         search_queries = generate_search_queries(rfp_text)
+#         questions_grouped = extract_questions_with_llm(rfp_text)
+#         company_rfp_text = extract_company_background_from_rfp(rfp_text)
+
+#         all_snippets = []
+#         for query in search_queries:
+#             results = search_with_serpapi(query)
+#             for item in results:
+#                 if snippet := item.get("snippet"):
+#                     all_snippets.append(snippet)
+
+#         raw_summary = summarize_results_with_llm(all_snippets, rfp_company_text=company_rfp_text)
+#         structured_summary = parse_rfp_summary(raw_summary)
+
+#         new_rfp = RFPDocument(
+#             filename=file.filename,
+#             file_path=file_path,
+#             file_hash=file_hash,
+#             extracted_text=rfp_text,
+#             admin_id=current_user.id,
+#             category="history",
+#             project_name=project_name
+#         )
+#         db.add(new_rfp)
+#         db.commit()
+#         db.refresh(new_rfp)
+
+#         new_summary = CompanySummary(
+#             rfp_id=new_rfp.id,
+#             summary_text=raw_summary,
+#             admin_id=current_user.id
+#         )
+#         db.add(new_summary)
+
+#         for group_number, data in questions_grouped.items():
+#             section_name = data.get("section", f"Section {group_number}")
+#             for q in data.get("questions", []):
+#                 db.add(RFPQuestion(
+#                     rfp_id=new_rfp.id,
+#                     question_text=q,
+#                     section=section_name,
+#                     admin_id=current_user.id
+#                 ))
+
+#         db.commit()
+
+#         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+#         chunks = splitter.split_text(rfp_text)
+
+#         for i, chunk in enumerate(chunks):
+#             try:
+#                 embedding_response = client.embeddings.create(
+#                     model="text-embedding-3-small",
+#                     input=chunk
+#                 )
+#                 embedding_vector = embedding_response.data[0].embedding
+#                 index.upsert([
+#                     {
+#                         "id": str(uuid.uuid4()),
+#                         "values": embedding_vector,
+#                         "metadata": {
+#                             "file_id": str(new_rfp.id),
+#                             "chunk_index": i,
+#                             "text": chunk
+#                         }
+#                     }
+#                 ])
+#             except Exception as embed_err:
+#                 print(f"[Embedding Error] Chunk {i}: {embed_err}")
+
+#         return {
+#             "status": "new",
+#             "rfp_id": new_rfp.id,
+#             "saved_file": file_path,
+#             "category": new_rfp.category,
+#             "project_name": project_name,
+#             "summary": structured_summary,
+#             "total_questions": questions_grouped,
+#             "embedded_chunks": len(chunks)
+#         }
+
+#     except Exception as e:
+#         traceback.print_exc()
+#         raise HTTPException(status_code=500, detail=str(e))
+
+async def process_rfp_file(
+    file: UploadFile,
+    project_name: str,
+    db: Session,
+    current_user: User
+):
     try:
         file_bytes = await file.read()
-        file_hash = hashlib.md5(file_bytes).hexdigest()
 
-        existing_rfp = db.query(RFPDocument).filter(RFPDocument.file_hash == file_hash).first()
+        if not file_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file is empty."
+            )
+        file_hash = hashlib.md5(file_bytes).hexdigest()
+        existing_rfp = (
+            db.query(RFPDocument)
+            .filter(RFPDocument.file_hash == file_hash)
+            .first()
+        )
         if existing_rfp:
             raise HTTPException(
                 status_code=208,
@@ -44,35 +174,27 @@ async def process_rfp_file(file: UploadFile, project_name: str, db: Session, cur
                     "existing_rfp_id": existing_rfp.id
                 }
             )
-
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        safe_original_name = os.path.basename(file.filename) if file.filename else "uploaded.pdf"
         dummy_filename = f"rfp_{timestamp}.pdf"
-        file_path = os.path.join(UPLOAD_FOLDER, dummy_filename)
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        file_path = os.path.join(UPLOAD_FOLDER, dummy_filename)
 
         with open(file_path, "wb") as f:
             f.write(file_bytes)
 
-        rfp_text = extract_text_from_pdf(file_bytes)
+        rfp_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+
+        if not rfp_text or not rfp_text.strip():
+            return {"error": "PDF text is empty or not readable after extraction."}
+
+        rfp_text = clean_extracted_text(rfp_text)
+
         if not rfp_text.strip():
-            return {"error": "PDF text is empty or not readable."}
-
-        search_queries = generate_search_queries(rfp_text)
-        questions_grouped = extract_questions_with_llm(rfp_text)
-        company_rfp_text = extract_company_background_from_rfp(rfp_text)
-
-        all_snippets = []
-        for query in search_queries:
-            results = search_with_serpapi(query)
-            for item in results:
-                if snippet := item.get("snippet"):
-                    all_snippets.append(snippet)
-
-        raw_summary = summarize_results_with_llm(all_snippets, rfp_company_text=company_rfp_text)
-        structured_summary = parse_rfp_summary(raw_summary)
+            return {"error": "PDF text became empty after cleaning (likely non-text document)."}
 
         new_rfp = RFPDocument(
-            filename=file.filename,
+            filename=safe_original_name,
             file_path=file_path,
             file_hash=file_hash,
             extracted_text=rfp_text,
@@ -84,6 +206,27 @@ async def process_rfp_file(file: UploadFile, project_name: str, db: Session, cur
         db.commit()
         db.refresh(new_rfp)
 
+        search_queries = generate_search_queries(rfp_text)
+        questions_grouped = extract_questions_with_llm(rfp_text)
+        company_rfp_text = extract_company_background_from_rfp(rfp_text)
+
+        all_snippets = []
+        for query in search_queries:
+            try:
+                results = search_with_serpapi(query)
+                for item in results:
+                    snippet = item.get("snippet")
+                    if snippet:
+                        all_snippets.append(snippet)
+            except Exception as search_err:
+                print(f"[SERP Error] Query '{query}': {search_err}")
+
+        raw_summary = summarize_results_with_llm(
+            all_snippets,
+            rfp_company_text=company_rfp_text
+        )
+        structured_summary = parse_rfp_summary(raw_summary)
+
         new_summary = CompanySummary(
             rfp_id=new_rfp.id,
             summary_text=raw_summary,
@@ -94,6 +237,8 @@ async def process_rfp_file(file: UploadFile, project_name: str, db: Session, cur
         for group_number, data in questions_grouped.items():
             section_name = data.get("section", f"Section {group_number}")
             for q in data.get("questions", []):
+                if not q:
+                    continue
                 db.add(RFPQuestion(
                     rfp_id=new_rfp.id,
                     question_text=q,
@@ -103,7 +248,10 @@ async def process_rfp_file(file: UploadFile, project_name: str, db: Session, cur
 
         db.commit()
 
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=100
+        )
         chunks = splitter.split_text(rfp_text)
 
         for i, chunk in enumerate(chunks):
@@ -113,6 +261,7 @@ async def process_rfp_file(file: UploadFile, project_name: str, db: Session, cur
                     input=chunk
                 )
                 embedding_vector = embedding_response.data[0].embedding
+
                 index.upsert([
                     {
                         "id": str(uuid.uuid4()),
@@ -138,6 +287,8 @@ async def process_rfp_file(file: UploadFile, project_name: str, db: Session, cur
             "embedded_chunks": len(chunks)
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -848,7 +999,14 @@ async def regenerate_answer_with_chat_service(request, db: Session):
         "Your task is to refine and regenerate proposal answers based on the user’s feedback, "
         "while also grounding the response in the provided knowledge base context. "
 
-        "Rewrite Mode (Highest Priority): "
+        "### Keystone Data Protection Rules (MANDATORY) "
+        "- The existing answer may include verified company data collected from a trusted internal database. "
+        "- Do NOT modify or remove important factual details such as: "
+        "legal company name, employee count, company address, certifications, or registration numbers. "
+        "- Do NOT hallucinate or invent new company information. "
+        "- You may improve sentence flow while keeping those factual elements intact. "
+
+        "### Rewrite Mode (Highest Priority): "
         "If the reviewer feedback includes instructions such as 'rewrite', 'shorten', "
         "'summarize', 'reduce word count', 'make concise', or 'rephrase', you MUST follow "
         "those rewrite instructions exactly. Ignore persuasion, structure preservation, and "
@@ -1242,3 +1400,183 @@ def get_trash_documents(db: Session, current_user: User):
             detail=f"Failed to fetch trash list: {str(e)}"
         )
 
+def create_keystone(request, db: Session,current_user:User):
+    try:
+        if current_user.role.lower() != "admin":
+            raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can add Keystone Data."
+        )
+
+        new_field = KeystoneData(
+            section=request.section,
+            field_group=request.field_group,
+            field_detail=request.field_detail,
+            field_type=request.field_type,
+            default_answer=request.default_answer
+        )
+
+        db.add(new_field)
+        db.commit()
+        db.refresh(new_field)
+
+        return {
+            "message": "Keystone field added successfully",
+            "data": {
+                "id": new_field.id,
+                "section": new_field.section,
+                "field_group": new_field.field_group,
+                "field_detail": new_field.field_detail,
+                "field_type": new_field.field_type,
+                "default_answer": new_field.default_answer
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_keystone_form(db: Session,current_user:User):
+    try:
+        if current_user.role.lower() != "admin":
+            raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can access this endpoint."
+        )
+
+        fields = db.query(KeystoneData).order_by(KeystoneData.id).all()
+        if not fields:
+            raise HTTPException(status_code=404, detail="No Keystone fields found")
+
+        form = {}
+
+        for item in fields:
+            section = item.section or "General"
+            group = item.field_group or "General"
+
+            if section not in form:
+                form[section] = {}
+
+            if group not in form[section]:
+                form[section][group] = []
+
+            form[section][group].append({
+                "id": item.id,
+                "field_detail": item.field_detail,
+                "field_type": item.field_type,
+                "value": item.default_answer or ""
+            })
+
+        return {
+            "status": "success",
+            "form": form
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+def modify_form_field(field_id: int, request: KeystoneCreateRequest, db: Session,current_user:User):
+    try:
+        if current_user.role.lower() != "admin":raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can update Keystone Data."
+        )
+
+        field = db.query(KeystoneData).filter(KeystoneData.id == field_id).first()
+
+        if not field:
+            raise HTTPException(status_code=404, detail="Keystone field not found")
+
+        field.section = request.section
+        field.field_group = request.field_group
+        field.field_detail = request.field_detail
+        field.field_type = request.field_type
+        field.default_answer = request.default_answer
+
+        db.commit()
+        db.refresh(field)
+
+        return {
+            "message": "Keystone field updated successfully",
+            "data": {
+                "id": field.id,
+                "section": field.section,
+                "field_group": field.field_group,
+                "field_detail": field.field_detail,
+                "field_type": field.field_type,
+                "default_answer": field.default_answer,
+                "created_at": field.created_at,
+                "updated_at": field.updated_at 
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    
+def modify_partial_form(field_id: int, request: KeystoneUpdateRequest, db: Session, current_user: User):
+    try:
+        if current_user.role.lower() != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can update Keystone Data."
+            )
+
+        field = db.query(KeystoneData).filter(KeystoneData.id == field_id).first()
+        if not field:
+            raise HTTPException(status_code=404, detail="Keystone field not found")
+
+        update_data = request.dict(exclude_unset=True)
+
+        for key, value in update_data.items():
+            setattr(field, key, value)
+
+        db.commit()
+        db.refresh(field)
+
+        return {
+            "message": "Keystone field partially updated",
+            "data": {
+                "id": field.id,
+                "section": field.section,
+                "field_group": field.field_group,
+                "field_detail": field.field_detail,
+                "field_type": field.field_type,
+                "default_answer": field.default_answer,
+                "created_at": field.created_at,
+                "updated_at": field.updated_at
+            }
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+def delete_keystone(field_id: int, db: Session,current_user:User):
+    try:
+        if current_user.role.lower() != "admin":
+            raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can delete Keystone Data."
+        )
+        field = db.query(KeystoneData).filter(KeystoneData.id == field_id).first()
+
+        if not field:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Keystone field with ID {field_id} not found"
+            )
+
+        db.delete(field)
+        db.commit()
+
+        return {
+            "message": "Keystone field deleted successfully",
+            "deleted_id": field_id
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    

@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey,ForeignKeyConstraint,Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from sqlalchemy.sql import func
 from app.db.database import Base
 
 class RFPDocument(Base):
@@ -148,3 +149,14 @@ class ReviewerAnswerVersion(Base):
         ),
     )
    
+class KeystoneData(Base):
+    __tablename__ = "keystone_data"
+
+    id = Column(Integer, primary_key=True, index=True)
+    section = Column(String, nullable=False)         
+    field_group = Column(String, nullable=True)  
+    field_detail = Column(String, nullable=True)   
+    field_type = Column(String, nullable=True)   
+    default_answer = Column(Text, nullable=True)  
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

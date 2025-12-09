@@ -4,17 +4,19 @@ from dotenv import load_dotenv
 import requests
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from app.models.rfp_models import User
+from app.models.rfp_models import KeystoneData, User
 from app.config import client, index,SERPAPI_KEY
 from pptx import Presentation
 from PyPDF2 import PdfReader
 from fastapi import HTTPException
-from app.models import *
+from app.models import * 
 import re
 import math
 import docx
 import pandas as pd
-import json
+import json,io
+from PIL import Image
+import pytesseract
 
 load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -23,7 +25,20 @@ def extract_text_from_pdf(pdf_file: bytes) -> str:
     text = ""
     with fitz.open(stream=pdf_file, filetype="pdf") as doc:
         for page in doc:
-            text += page.get_text()
+            extracted_text = page.get_text()
+
+            if extracted_text and extracted_text.strip():
+                text += extracted_text
+            else:
+                pix = page.get_pixmap(dpi=300)
+                img_data = pix.tobytes("png")
+                image = Image.open(io.BytesIO(img_data))
+                ocr_text = pytesseract.image_to_string(image)
+                text += ocr_text
+
+    if not text.strip():
+        raise ValueError("Unable to extract text from PDF: possibly fully scanned or corrupted.")
+
     return text
 
 def chat_model(model: str, system_prompt: str, user_prompt: str, temperature: float , max_tokens: int) -> str:
@@ -86,120 +101,6 @@ def generate_search_queries(rfp_text: str) -> list:
 
     return [line.strip(" -•") for line in content.split("\n") if line.strip()]
 
-# def extract_company_background_from_rfp(rfp_text: str) -> str:
-#     """
-#     Extracts 3 fully detailed sections from an RFP:
-#     1. Purpose of the RFP
-#     2. Company Background
-#     3. Submission Details & Requirements
-#     """
-
-#     user_prompt = f"""
-#     You are a senior RFP analyst with deep expertise in procurement, compliance, and government/enterprise documentation.
-
-#     Your task is to extract and reorganize information from the provided RFP text into **exactly three sections**.  
-#     You must pull the content directly from the text without losing any detail.
-
-#     ============================================================
-#      **CRITICAL EXTRACTION RULES (DO NOT VIOLATE)**  
-#     ============================================================
-
-#     **1. NO HALLUCINATIONS.**  
-#     - If the RFP text does not contain a detail, leave it out.  
-#     - Never infer names, dates, budgets, processes, or company info.
-
-#     **2. DO NOT OMIT ANY INFORMATION.**  
-#     - If relevant content appears in multiple places in the RFP, gather all of it.  
-#     - Consolidate it into the correct section.
-
-#     **3. USE VERBATIM TEXT WHENEVER POSSIBLE.**  
-#     - Preserve original wording, formatting style, terminology, and phrasing.  
-#     - Only merge, compress, or rewrite when necessary for clarity.
-
-#     **4. STRICT SECTION SEPARATION.**  
-#     - No submission details in Section 1 or Section 2.  
-#     - No background info in Section 1 or Section 3.  
-#     - No purpose-related narrative in Section 2 or Section 3.
-
-#     **5. DO NOT DUPLICATE RFP HEADINGS.**  
-#     - Use only the section headings defined below.
-
-#     ============================================================
-#      **SECTION REQUIREMENTS**
-#     ============================================================
-
-#     ### **Section 1: Purpose of the RFP**
-#     Extract all content that explains:
-#     - The purpose, intent, or reason for issuing the RFP.  
-#     - Strategic goals, problem statements, motivations, and desired outcomes.  
-#     - Stakeholders, agencies, departments, or sponsoring bodies explicitly tied to purpose.  
-#     - Scope elements *only when directly connected to purpose*.  
-#     **Exclude** submission instructions, dates, addresses, or proposal formatting.
-
-#     ### **Section 2: Company Background**
-#     Extract every piece of organizational context about the issuer, including:
-#     - Full organization name (legal name, aliases, abbreviations).  
-#     - Company type (public, private, nonprofit, government, etc.).  
-#     - Headquarters, office locations, regions served, or jurisdiction.  
-#     - Mission, vision, mandate, history, values, or strategic priorities.  
-#     - Size, capacity, funding sources, budgets, staff counts.  
-#     - Programs, services, lines of business, or operational areas.  
-#     - Governance, leadership, key stakeholders, partner organizations.  
-#     - DEI or policy priorities (if present).  
-#     Collect all background across the entire document, even if scattered.
-
-#     **Explicit Exclusions**  
-#     - NO submission rules  
-#     - NO proposal requirements  
-#     - NO selection criteria  
-#     - NO deadlines or contacts  
-
-#     ### **Section 3: Submission Details & Requirements**
-#     Extract every procedural, compliance, and submission-related detail, such as:
-#     - Proposal due dates, times, and delivery deadlines.  
-#     - Submission methods (email, portal, hardcopy, courier, etc.).  
-#     - Physical or digital submission addresses.  
-#     - Required formats (PDF, Word, binders, number of copies, etc.).  
-#     - Mandatory forms, certifications, affidavits, or attachments.  
-#     - Eligibility rules and compliance requirements.  
-#     - Evaluation criteria, scoring, selection or award process.  
-#     - Contacts: names, titles, phone numbers, emails.  
-#     - Timelines, Q&A policies, pre-bid meetings, vendor requirements.  
-#     Combine all procedural content into a single comprehensive section.
-
-#     ============================================================
-#      **OUTPUT FORMAT (STRICT)**
-#     ============================================================
-
-#     Section 1: Purpose of the RFP  
-#     [full extracted content]
-
-#     Section 2: Company Background  
-#     [full extracted content]
-
-#     Section 3: Submission Details & Requirements  
-#     [full extracted content]
-
-#     ============================================================
-#      **SOURCE RFP TEXT**
-#     ============================================================
-#     \"\"\"
-#     {rfp_text}
-#     \"\"\"
-#     """
-
-#     system_prompt = (
-#         "You are a senior RFP extraction analyst. You extract purpose, background, and submission "
-#         "requirements from RFPs with perfect accuracy, zero hallucinations, and strict adherence to sections."
-#     )
-
-#     return chat_model(
-#         model="gpt-4o-mini",
-#         system_prompt=system_prompt,
-#         user_prompt=user_prompt,
-#         temperature=0.1,
-#         max_tokens=2200
-#     )
 def extract_company_background_from_rfp(rfp_text: str) -> str:
     """
     Extracts 3 fully detailed sections from an RFP:
@@ -437,142 +338,6 @@ def search_with_serpapi(query: str):
             })
     return results
 
-# def extract_questions_with_llm(pdf_text: str) -> dict:
-#     prompt = f"""
-#         You are a **Senior RFP Analysis Expert** with extensive experience in analyzing government and corporate procurement documents.  
-#         Your task is to **extract every explicit or implicit vendor response requirement** from the provided RFP text with complete accuracy.
-
-#         ---
-
-#         ###   OBJECTIVE
-#         Extract **every question, instruction, requirement, or directive** that obligates the vendor to provide information, documents, proofs, demonstrations, or explanations in their proposal.
-
-#         This includes:
-#         - Explicit questions  
-#         - Implicit response requirements  
-#         - “Vendor shall…” statements  
-#         - “Offeror must…” statements  
-#         - “Proposal must include…” statements  
-#         - “Vendor must demonstrate/submit/provide…”  
-#         - Requirements hidden inside narrative text  
-#         - Required attachments  
-
-#         ---
-
-#         ###  INCLUDE HIDDEN VENDOR REQUIREMENTS (CRITICAL)
-#         You MUST extract all vendor requirements even if they are NOT written as questions:
-
-#         - **Vendor Selection Criteria**  
-#         - **Evaluation Criteria**  
-#         - **Scoring Criteria**  
-#         - **Mandatory Submission Requirements**  
-#         - **Required Attachments & Certifications**  
-#         - **Qualifications Requirements**  
-#         - **Experience Requirements**  
-#         - **Portfolio Requirements**  
-#         - **Technical / Operational Capability Requirements**  
-#         - **Compliance Requirements**  
-
-#         If the document contains a section such as **“Vendor Selection Criteria”**,  
-#         **EVERY bullet point or line in that section MUST be extracted as a vendor response requirement.**
-
-#         Example conversions:
-#         - “Existing Portfolio” → “Provide your existing portfolio.”
-#         - “Experience in education projects” → “Demonstrate experience in education projects.”
-#         - “Technical capability” → “Demonstrate technical capability.”
-
-#         ---
-
-#         ###  DO NOT EXTRACT (ADMINISTRATIVE ONLY)
-#         Do **NOT** include:
-#         - Submission dates  
-#         - Delivery addresses  
-#         - Contact details  
-#         - Formatting instructions (PDF, Word, etc.)  
-#         - Page limits, font sizes  
-#         - Narrative background with **no vendor action**  
-#         - General goals or intentions with **no vendor obligation**  
-
-#         BUT…
-
-#         ###  IMPORTANT EXCEPTION  
-#         If ANY administrative or narrative text contains a vendor obligation (e.g., “Vendor must submit X”), you MUST extract it.
-
-#         ---
-
-#         ###  EXTRACTION RULES
-#         - Extract **verbatim text** where possible.
-#         - Do NOT summarize or rewrite unless needed to convert a bullet to a clean text line.
-#         - Preserve section hierarchy and numbering when present.
-#         - If numbering is missing, create logical numbering (e.g., “G.1”, “G.2”).
-#         - Group extracted items under their **exact section name** from the source RFP.
-#         - Restart numbering within each section (e.g., “2.1.1”, “2.1.2”).
-
-#         ---
-
-#         ###  OUTPUT FORMAT (STRICT JSON)
-#         Return a **JSON object** ONLY (no markdown).
-
-#         Each section must have:
-#         - "section": exact section title
-#         - "questions": a list of extracted vendor requirements
-
-#         Example:
-#         {
-#         "1": {
-#             "section": "1.1 Scope of Work",
-#             "questions": [
-#             "1.1.1 Describe your proposed solution.",
-#             "1.1.2 Provide all relevant past performance examples."
-#             ]
-#         },
-#         "2": {
-#             "section": "Vendor Selection Criteria",
-#             "questions": [
-#             "2.1.1 Provide your existing portfolio.",
-#             "2.1.2 Demonstrate technical capability.",
-#             "2.1.3 Demonstrate experience in education projects."
-#             ]
-#         }
-#         }
-
-#         ---
-
-#         ### INPUT RFP TEXT
-#         \"\"\"
-#         {pdf_text}
-#         \"\"\"
-#         """
-
-
-#     response = client.chat.completions.create(
-#         model="gpt-4o-mini",
-#         messages=[
-#             {
-#                 "role": "system",
-#                 "content": (
-#                     "You are an expert assistant trained to extract structured, "
-#                     "section-wise response prompts from RFP documents. "
-#                     "Always return clean JSON with no extra formatting. "
-#                     "Never modify, summarize, or rephrase the RFP text."
-#                 ),
-#             },
-#             {"role": "user", "content": prompt},
-#         ],
-#         temperature=0.0,  
-#         max_tokens=2000,
-#     )
-
-#     content = response.choices[0].message.content
-
-#     try:
-#         import json
-#         grouped_questions = json.loads(content)
-#     except Exception:
-#         grouped_questions = {"raw_text": content}
-
-#     return grouped_questions
-
 def extract_questions_with_llm(pdf_text: str) -> dict:
     prompt = f"""
 You are an RFP Proposal Response Extraction Specialist.
@@ -695,7 +460,13 @@ def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
 
 def generate_answer_with_context(question: str, context: str, short_name: str) -> str:
     prompt = f"""
-    You are an expert proposal writer. You write RFP responses **only using the provided context**.
+    You are an expert proposal writer. You write RFP responses using the provided context and verified company information if available.
+
+    ### ⭐ Keystone Data Rule (IMPORTANT)
+    - If the context includes a section titled "Company Information", 
+      then use that information to support factual company details (e.g., legal name, number of employees, certifications).
+    - Incorporate this information naturally into the response when relevant.
+    - Do NOT hallucinate or invent company information. Use only what is explicitly provided.
 
     ### Mandatory RFP Usage Rule
     - Always reference and pull specific details from the provided RFP context.
@@ -708,7 +479,7 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
     - Never use “the client”.
     - Never guess or invent a different name.
 
-    ### Voice & Point of View (MANDMANDATORY)
+    ### Voice & Point of View (MANDATORY)
     - Use “we” or “our”.
     - Never use “I”.
     - Never refer to Ringer in third person.
@@ -720,38 +491,32 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
     - If the context mentions hourly pricing, rewrite it into a flat-rate model without creating specific prices.
 
     ### Subcontractor / Vendor Operating Model (MANDATORY)
-    - Ringer delivers services through **subcontractors and external vendors**.
+    - Ringer delivers services through subcontractors and external vendors.
     - This is a core part of how Ringer operates.
     - When describing service delivery, staffing, capabilities, or processes:
         - reflect that subcontractors/vendors are used.
         - never imply Ringer relies solely on in-house full-time staff.
-    - Keep descriptions accurate and high-level unless the context specifies otherwise.
 
     ### Accuracy Rules
-    - Use ONLY the information in the context.
+    - Use ONLY the information in the context and Company Information.
     - If the context lacks the information, write:
-      “We do not have enough information to provide that detail based on the available context.”
+      “We do not have enough information to provide that detail based on the available context and company data.”
 
     ### Tone & Style
     - Professional, concise, confident.
     - No vague marketing language.
 
-    ### Concise Writing Rules (MANDATORY)
-    - Your writing must be concise and direct.
-    - Eliminate unnecessary words and avoid wordy sentences.
-    - Avoid starting sentences with "To..." or long prepositional openings.
-    - Use active voice and straightforward sentence structure.
-    - Avoid filler phrases such as "in order to", "as part of", "with the intention of".
-    - Reduce sentence length by 20–30% without losing meaning.
-    - Do not repeat ideas in different words.
-    - Aim for tight, high-impact, business-professional writing.
+    ### Concise Writing Rules
+    - Short, direct sentences.
+    - Active voice.
+    - No filler phrases.
 
     ### Formatting
     - No bullet points unless context explicitly requires it.
     - Do NOT mention “context” or “question”.
 
     ----
-
+    
     Context:
     {context}
 
@@ -760,8 +525,7 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
 
     Final Answer:
     """
-
-
+ 
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -990,4 +754,26 @@ def get_next_index(rfp_id: int, user_id: int, question: str, db: Session) -> flo
     
     return f"{new_index} {question}"
 
+def clean_extracted_text(text: str) -> str:
+    """
+    Clean up common PDF/OCR noise so LLM gets better input.
+    - Removes obvious page markers
+    - Normalizes line breaks and extra spaces
+    """
+    text = re.sub(r"Page\s+\d+\s*\n?", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+
+    return text.strip()
+
+def find_related_keystone(db: Session, question_text: str):
+    records = db.query(KeystoneData).all()
+
+    question_lower = question_text.lower()
+
+    for r in records:
+        if r.field_detail and r.field_detail.lower() in question_lower:
+            return r.default_answer
+
+    return None
 
