@@ -1436,44 +1436,46 @@ def create_keystone(request, db: Session,current_user:User):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_keystone_form(db: Session,current_user:User):
-    try:
-        if current_user.role.lower() != "admin":
-            raise HTTPException(
+def get_keystone_form(db: Session, current_user: User):
+    if current_user.role.lower() != "admin":
+        raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins can access this endpoint."
         )
 
-        fields = db.query(KeystoneData).order_by(KeystoneData.id).all()
-        if not fields:
-            raise HTTPException(status_code=404, detail="No Keystone fields found")
+    fields = db.query(KeystoneData).order_by(KeystoneData.id).all()
 
-        form = {}
-
-        for item in fields:
-            section = item.section or "General"
-            group = item.field_group or "General"
-
-            if section not in form:
-                form[section] = {}
-
-            if group not in form[section]:
-                form[section][group] = []
-
-            form[section][group].append({
-                "id": item.id,
-                "field_detail": item.field_detail,
-                "field_type": item.field_type,
-                "value": item.default_answer or ""
-            })
-
+    if not fields:
         return {
             "status": "success",
-            "form": form
+            "form": {}
         }
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    form = {}
+
+    for item in fields:
+        section = item.section or "General"
+        group = item.field_group or "General"
+
+        if section not in form:
+            form[section] = {}
+
+        if group not in form[section]:
+            form[section][group] = []
+
+        form[section][group].append({
+            "id": item.id,
+            "field_detail": item.field_detail,
+            "field_type": item.field_type,
+            "value": item.default_answer or ""
+        })
+
+    return {
+        "status": "success",
+        "form": form
+    }
+
+
     
 def modify_form_field(field_id: int, request: KeystoneCreateRequest, db: Session,current_user:User):
     try:
