@@ -1628,7 +1628,7 @@ def save_form(request: KeystoneDynamicFormRequest, db: Session, current_user: Us
         section=request.section,
         field_group=request.field_group,
         field_detail=request.field_detail,
-        field_type="text",
+        field_type=request.unnamed,
         default_answer=request.ringer_answer
     )
 
@@ -1645,6 +1645,7 @@ def save_form(request: KeystoneDynamicFormRequest, db: Session, current_user: Us
             "field_group": new_row.field_group,
             "field_detail": new_row.field_detail,
             "default_answer": new_row.default_answer,
+            "unnamed": request.unnamed
         }
     }
 
