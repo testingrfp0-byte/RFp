@@ -23,7 +23,7 @@ from app.services.llm_service import (
     get_similar_context,generate_summary,delete_rfp_embeddings,clean_extracted_text,
 )
 from app.schemas.schema import (
-    AssignReviewer, ReviewerOut, AdminEditRequest, UserOut,reviwerdelete, ReassignReviewerRequest,QuestionInput,KeystoneCreateRequest,KeystoneUpdateRequest,KeystoneDynamicFormRequest
+    AssignReviewer, ReviewerOut, AdminEditRequest, UserOut,reviwerdelete, ReassignReviewerRequest,QuestionInput,KeystoneCreateRequest,KeystoneUpdateRequest,KeystoneDynamicFormRequest,KeystonePatchRequest
 )
 from app.config import pc,index,UPLOAD_FOLDER
 import traceback
@@ -1623,7 +1623,7 @@ def save_form(request: KeystoneDynamicFormRequest, db: Session, current_user: Us
 
     if current_user.role.lower() != "admin":
         raise HTTPException(status_code=403, detail="Only admins can save Keystone form data.")
-
+    
     new_row = KeystoneData(
         section=request.section,
         field_group=request.field_group,
@@ -1644,7 +1644,7 @@ def save_form(request: KeystoneDynamicFormRequest, db: Session, current_user: Us
             "section": new_row.section,
             "field_group": new_row.field_group,
             "field_detail": new_row.field_detail,
-            "default_answer": new_row.default_answer,
+            "Ringer_Answer": new_row.default_answer,
             "unnamed": request.unnamed
         }
     }
@@ -1678,7 +1678,7 @@ def fetch_form(db: Session, current_user: User):
             "Field_Group": record.field_group,
             "Field_Detail": record.field_detail,
             "Ringer_Answer": record.default_answer,
-            "Unnamed": None 
+            "Unnamed": record.field_type
         }
         forms_list.append(form)
 
@@ -1687,7 +1687,7 @@ def fetch_form(db: Session, current_user: User):
         "forms": forms_list
     }
 
-def update_form(form_id: int, request: KeystoneDynamicFormRequest, db: Session, current_user: User):
+def update_form(form_id: int, request: KeystonePatchRequest, db: Session, current_user: User):
 
     if current_user.role.lower() != "admin":
         raise HTTPException(status_code=403, detail="Only admins can update Keystone form data.")
@@ -1723,7 +1723,7 @@ def update_form(form_id: int, request: KeystoneDynamicFormRequest, db: Session, 
             "section": record.section,
             "field_group": record.field_group,
             "field_detail": record.field_detail,
-            "default_answer": record.default_answer
+            "ringer_answer": record.default_answer
         }
     }
 

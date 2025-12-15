@@ -169,5 +169,12 @@ class KeystoneDynamicFormRequest(BaseModel):
     unnamed: Optional[str] = Field(None, alias="unnamed")
     ringer_answer: Optional[str] = Field(None, alias="ringer's_answer")
 
+class KeystonePatchRequest(BaseModel):
+    section: Optional[str] = None
+    field_group: Optional[str] = None
+    field_detail: Optional[str] = None
+    unnamed: Optional[str] = None
+    ringer_answer: Optional[str] = None
+
 
 

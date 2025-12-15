@@ -15,7 +15,7 @@ from app.db.database import get_db, Base, engine
 from app.schemas.schema import (
     FileDetails, AssignReviewer, ReviewerOut, AdminEditRequest,
     RFPDocumentGroupedQuestionsOut, NotificationRequest,
-    reviwerdelete, ChatInputRequest, ReassignReviewerRequest, GroupedRFPQuestionOut,QuestionOut,QuestionInput,KeystoneCreateRequest,KeystoneUpdateRequest,KeystoneDynamicFormRequest)
+    reviwerdelete, ChatInputRequest, ReassignReviewerRequest, GroupedRFPQuestionOut,QuestionOut,QuestionInput,KeystoneCreateRequest,KeystoneUpdateRequest,KeystoneDynamicFormRequest,KeystonePatchRequest)
 from app.models.rfp_models import User, Reviewer, RFPDocument, RFPQuestion
 from app.services.llm_service import client 
 from app.api.routes.utils import get_current_user
@@ -656,7 +656,7 @@ def get_keystone_form(
 @router.patch("/dynamic/form/{form_id}")
 def update_keystone_form(
     form_id: int,
-    request: KeystoneDynamicFormRequest,
+    request: KeystonePatchRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
