@@ -3,6 +3,8 @@ import asyncio
 import os,re
 import mimetypes
 import shutil
+import pandas as pd
+import io
 from datetime import datetime
 from fastapi import UploadFile, HTTPException, status
 from fastapi.responses import FileResponse
@@ -1400,188 +1402,6 @@ def get_trash_documents(db: Session, current_user: User):
             detail=f"Failed to fetch trash list: {str(e)}"
         )
 
-# def create_keystone(request, db: Session,current_user:User):
-#     try:
-#         if current_user.role.lower() != "admin":
-#             raise HTTPException(
-#             status_code=status.HTTP_403_FORBIDDEN,
-#             detail="Only admins can add Keystone Data."
-#         )
-
-#         new_field = KeystoneData(
-#             section=request.section,
-#             field_group=request.field_group,
-#             field_detail=request.field_detail,
-#             field_type=request.field_type,
-#             default_answer=request.default_answer
-#         )
-
-#         db.add(new_field)
-#         db.commit()
-#         db.refresh(new_field)
-
-#         return {
-#             "message": "Keystone field added successfully",
-#             "data": {
-#                 "id": new_field.id,
-#                 "section": new_field.section,
-#                 "field_group": new_field.field_group,
-#                 "field_detail": new_field.field_detail,
-#                 "field_type": new_field.field_type,
-#                 "default_answer": new_field.default_answer
-#             }
-#         }
-
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# def get_keystone_form(db: Session, current_user: User):
-#     if current_user.role.lower() != "admin":
-#         raise HTTPException(
-#             status_code=status.HTTP_403_FORBIDDEN,
-#             detail="Only admins can access this endpoint."
-#         )
-
-#     fields = db.query(KeystoneData).order_by(KeystoneData.id).all()
-
-#     if not fields:
-#         return {
-#             "status": "success",
-#             "form": {}
-#         }
-
-#     form = {}
-
-#     for item in fields:
-#         section = item.section or "General"
-#         group = item.field_group or "General"
-
-#         if section not in form:
-#             form[section] = {}
-
-#         if group not in form[section]:
-#             form[section][group] = []
-
-#         form[section][group].append({
-#             "id": item.id,
-#             "field_detail": item.field_detail,
-#             "field_type": item.field_type,
-#             "value": item.default_answer or ""
-#         })
-
-#     return {
-#         "status": "success",
-#         "form": form
-#     }
-
-# def modify_form_field(field_id: int, request: KeystoneCreateRequest, db: Session,current_user:User):
-#     try:
-#         if current_user.role.lower() != "admin":raise HTTPException(
-#             status_code=status.HTTP_403_FORBIDDEN,
-#             detail="Only admins can update Keystone Data."
-#         )
-
-#         field = db.query(KeystoneData).filter(KeystoneData.id == field_id).first()
-
-#         if not field:
-#             raise HTTPException(status_code=404, detail="Keystone field not found")
-
-#         field.section = request.section
-#         field.field_group = request.field_group
-#         field.field_detail = request.field_detail
-#         field.field_type = request.field_type
-#         field.default_answer = request.default_answer
-
-#         db.commit()
-#         db.refresh(field)
-
-#         return {
-#             "message": "Keystone field updated successfully",
-#             "data": {
-#                 "id": field.id,
-#                 "section": field.section,
-#                 "field_group": field.field_group,
-#                 "field_detail": field.field_detail,
-#                 "field_type": field.field_type,
-#                 "default_answer": field.default_answer,
-#                 "created_at": field.created_at,
-#                 "updated_at": field.updated_at 
-#             }
-#         }
-
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=str(e))
-    
-# def modify_partial_form(field_id: int, request: KeystoneUpdateRequest, db: Session, current_user: User):
-#     try:
-#         if current_user.role.lower() != "admin":
-#             raise HTTPException(
-#                 status_code=status.HTTP_403_FORBIDDEN,
-#                 detail="Only admins can update Keystone Data."
-#             )
-
-#         field = db.query(KeystoneData).filter(KeystoneData.id == field_id).first()
-#         if not field:
-#             raise HTTPException(status_code=404, detail="Keystone field not found")
-
-#         update_data = request.dict(exclude_unset=True)
-
-#         for key, value in update_data.items():
-#             setattr(field, key, value)
-
-#         db.commit()
-#         db.refresh(field)
-
-#         return {
-#             "message": "Keystone field partially updated",
-#             "data": {
-#                 "id": field.id,
-#                 "section": field.section,
-#                 "field_group": field.field_group,
-#                 "field_detail": field.field_detail,
-#                 "field_type": field.field_type,
-#                 "default_answer": field.default_answer,
-#                 "created_at": field.created_at,
-#                 "updated_at": field.updated_at
-#             }
-#         }
-
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=str(e))
-
-# def delete_keystone(field_id: int, db: Session,current_user:User):
-#     try:
-#         if current_user.role.lower() != "admin":
-#             raise HTTPException(
-#             status_code=status.HTTP_403_FORBIDDEN,
-#             detail="Only admins can delete Keystone Data."
-#         )
-#         field = db.query(KeystoneData).filter(KeystoneData.id == field_id).first()
-
-#         if not field:
-#             raise HTTPException(
-#                 status_code=status.HTTP_404_NOT_FOUND,
-#                 detail=f"Keystone field with ID {field_id} not found"
-#             )
-
-#         db.delete(field)
-#         db.commit()
-
-#         return {
-#             "message": "Keystone field deleted successfully",
-#             "deleted_id": field_id
-#         }
-
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=str(e))
-# # -----------------------------------------------------------------
-#spreadsheet implementaion
-import pandas as pd
-import io
 async def extract_col(file: UploadFile, current_user: User):
     try:
         if current_user.role.lower() != "admin":
@@ -1745,3 +1565,45 @@ def delete_form(form_id: int, db: Session, current_user: User):
         "message": f"Form with ID {form_id} deleted successfully."
     }
 
+def delete_question(question_id: int,db: Session,current_user:User):
+
+    if current_user.role.lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin can delete questions"
+        )
+
+    question = db.query(RFPQuestion).filter(
+        RFPQuestion.id == question_id
+    ).first()
+
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found"
+        )
+
+    if question.assigned_user_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question is already assigned to a reviewer and cannot be deleted"
+        )
+
+    reviewer_exists = db.query(Reviewer).filter(
+        Reviewer.ques_id == question_id
+    ).first()
+
+    if reviewer_exists:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Question has reviewer assignment and cannot be deleted"
+        )
+
+    db.delete(question)
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": "Question deleted successfully",
+        "question_id": question_id
+    }

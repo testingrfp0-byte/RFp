@@ -29,7 +29,7 @@ from app.utils.admin_function import (
     admin_filter_questions_by_status_service, analyze_overall_score_service,
     view_rfp_document_service, edit_question_by_admin_service,
     update_profile_service, delete_reviewer_service,
-    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents,add_ques,restore_rfp_doc,permanent_delete_rfp,get_trash_documents,extract_col,save_form,fetch_form,update_form,delete_form
+    regenerate_answer_with_chat_service, reassign_reviewer_service,upload_documents,add_ques,restore_rfp_doc,permanent_delete_rfp,get_trash_documents,extract_col,save_form,fetch_form,update_form,delete_form,delete_question
 )
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -583,50 +583,6 @@ def get_trash_doc(
 ):
     return get_trash_documents(db, current_user)
 
-# @router.post("/createform")
-# def create_keystone_field(
-#     request: KeystoneCreateRequest,
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     return create_keystone(request, db,current_user)
-
-# @router.get("/form")
-# def fetch_keystone_form(
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-    
-#     return get_keystone_form(db,current_user)
-
-# @router.put("/form/update/{field_id}")
-# def update_form_field(
-#     field_id: int,
-#     request: KeystoneCreateRequest,
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-
-#     return modify_form_field(field_id, request, db,current_user)
-
-# @router.patch("/form/update/{field_id}")
-# def partial_update(
-#     field_id: int,
-#     request: KeystoneUpdateRequest,
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     return modify_partial_form(field_id, request, db,current_user)
-
-# @router.delete("/form/delete/{field_id}")
-# def delete_form(
-#     field_id: int,
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     return delete_keystone(field_id, db,current_user)
-
-
 #spreadheet upload implementation
 @router.post("/dynamic/extract-columns")
 async def extract_columns(
@@ -669,3 +625,11 @@ def delete_keystone_form(
     current_user: User = Depends(get_current_user)
 ):
     return delete_form(form_id, db, current_user)
+
+@router.delete("/delete/questions/{question_id}")
+def delete_ques_workin_progress(
+    question_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    return delete_question(question_id,db,current_user)
