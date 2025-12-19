@@ -279,7 +279,7 @@ async def process_rfp_file(
                 print(f"[Embedding Error] Chunk {i}: {embed_err}")
 
         return {
-            "status": "new",
+            "message": "successfully uploaded",
             "rfp_id": new_rfp.id,
             "saved_file": file_path,
             "category": new_rfp.category,
@@ -317,7 +317,7 @@ def get_all_users(db: Session, current_user: User):
         if current_user.role != "admin":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Only admins can access User details."
+                message="Only admins can access User details."
             )
 
         users = db.query(User).all()

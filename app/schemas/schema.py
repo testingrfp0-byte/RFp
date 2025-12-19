@@ -161,7 +161,6 @@ class KeystoneUpdateRequest(BaseModel):
     field_type: Optional[str] = None
     default_answer: Optional[str] = None
 
-
 class KeystoneDynamicFormRequest(BaseModel):
     section: Optional[str] = Field(None, alias="section")
     field_group: Optional[str] = Field(None, alias="field_group")

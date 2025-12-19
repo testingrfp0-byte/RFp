@@ -462,7 +462,7 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
     prompt = f"""
     You are an expert proposal writer. You write RFP responses using the provided context and verified company information if available.
 
-    ### ⭐ Keystone Data Rule (IMPORTANT)
+    ###  Keystone Data Rule (IMPORTANT)
     - If the context includes a section titled "Company Information", 
       then use that information to support factual company details (e.g., legal name, number of employees, certifications).
     - Incorporate this information naturally into the response when relevant.

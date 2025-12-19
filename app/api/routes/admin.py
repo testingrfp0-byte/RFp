@@ -79,7 +79,7 @@ def get_user(
     return get_all_users(db, current_user)
 
 @router.get("/get_assign_users")
-def get_assigned_users(
+def get_assigned(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -378,7 +378,10 @@ async def generate_rfp_doc(
     doc.add_paragraph(executive_summary)
 
     os.makedirs(GENERATED_FOLDER, exist_ok=True)
-    file_name = f"rfp_response_{rfp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.docx"
+    original_pdf_name = rfp_doc.filename
+    base_name = os.path.splitext(original_pdf_name)[0]
+    file_name = f"{base_name}_response.docx"
+    # file_name = f"rfp_response_{rfp_id}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.docx"
     file_path = os.path.join(GENERATED_FOLDER, file_name)
     doc.save(file_path)
 

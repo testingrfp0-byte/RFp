@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,Request
 from app.api.routes import admin,auth,user
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -7,6 +7,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 from app.db.database import get_db
 from app.models import RFPDocument
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException as FastAPIHTTPException
+
 
 app = FastAPI(title="RFP Generator")
 
@@ -17,6 +20,18 @@ app.add_middleware(
     allow_methods=["*"],  
     allow_headers=["*"], 
 )
+@app.exception_handler(FastAPIHTTPException)
+async def http_exception_handler(
+    request: Request,
+    exc: FastAPIHTTPException
+):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "error",
+            "message": exc.detail
+        }
+    )
 
 def auto_delete_expired_rfps():
     db_gen = get_db()

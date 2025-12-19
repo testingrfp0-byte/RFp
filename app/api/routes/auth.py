@@ -134,7 +134,6 @@ def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/verify_otp")
 def verify_otp(request: VerifyOtpRequest, db: Session = Depends(get_db)):
     try:
