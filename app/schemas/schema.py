@@ -2,6 +2,12 @@ from pydantic import BaseModel,Field
 from datetime import datetime
 from typing import List, Optional
 
+class UpdateProfileRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    image_base64: Optional[str] = None
+    image_name: Optional[str] = None
+
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -43,8 +49,7 @@ class RFPQuestionOut(BaseModel):
     question_text: str
     section: str
 
-
-    class Config:
+class Config:
         from_attributes = True
         validate_by_name = True
 
@@ -161,7 +166,6 @@ class KeystoneUpdateRequest(BaseModel):
     field_type: Optional[str] = None
     default_answer: Optional[str] = None
 
-
 class KeystoneDynamicFormRequest(BaseModel):
     section: Optional[str] = Field(None, alias="section")
     field_group: Optional[str] = Field(None, alias="field_group")
@@ -175,6 +179,3 @@ class KeystonePatchRequest(BaseModel):
     field_detail: Optional[str] = None
     unnamed: Optional[str] = None
     ringer_answer: Optional[str] = None
-
-
-

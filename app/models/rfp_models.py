@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey,ForeignKeyConstraint,Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey,ForeignKeyConstraint,Boolean,LargeBinary
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from sqlalchemy.sql import func
@@ -15,8 +15,8 @@ class RFPDocument(Base):
     admin_id = Column(Integer) 
     file_hash = Column(String, unique=True, nullable=False)
     project_name = Column(String, nullable=True)
-    is_deleted = Column(Boolean, default=False) #for trash
-    deleted_at = Column(DateTime, nullable=True) #for trash
+    is_deleted = Column(Boolean, default=False)
+    deleted_at = Column(DateTime, nullable=True)
 
     summary = relationship(
         "CompanySummary",
@@ -45,7 +45,7 @@ class RFPQuestion(Base):
     id = Column(Integer, primary_key=True, index=True)
     rfp_id = Column(Integer, ForeignKey("rfp_documents.id"))
     question_text = Column(Text)
-    section = Column(String) 
+    section = Column(String)
     assigned_user_id = Column(Integer, nullable=True)         
     assigned_username = Column(String, nullable=True)         
     assignment_status = Column(String, nullable=True)         
@@ -77,6 +77,7 @@ class User(Base):
     otp_expiry = Column(DateTime, nullable=True)
     is_verified = Column(Boolean, default=False)
     image = Column(String, nullable=True)
+    image_bytea = Column(LargeBinary, nullable=True)
 
     reviews = relationship(
         "Reviewer",

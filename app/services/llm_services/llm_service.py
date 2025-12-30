@@ -1,7 +1,5 @@
-import os
-import fitz  # PyMuPDF
+import os,fitz,requests,re,math,docx,json,io,pytesseract
 from dotenv import load_dotenv
-import requests
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from app.models.rfp_models import KeystoneData, User
@@ -10,13 +8,8 @@ from pptx import Presentation
 from PyPDF2 import PdfReader
 from fastapi import HTTPException
 from app.models import * 
-import re
-import math
-import docx
 import pandas as pd
-import json,io
 from PIL import Image
-import pytesseract
 
 load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -398,7 +391,6 @@ Extract ONLY the **questions that require the vendor to write a narrative answer
     try:
         grouped_questions = json.loads(content)
     except Exception:
-        # print(" RAW OUTPUT (INVALID JSON):\n", content)
         raise HTTPException(status_code=500,
                             detail="AI returned invalid JSON for extracted questions.")
 
@@ -776,4 +768,3 @@ def find_related_keystone(db: Session, question_text: str):
             return r.default_answer
 
     return None
-

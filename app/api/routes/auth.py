@@ -1,11 +1,11 @@
 from fastapi import Depends,HTTPException,APIRouter,status
 from sqlalchemy.orm import Session
 from app.schemas.schema import user_register
-from app.services.llm_service import hash_password
+from app.services.llm_services.llm_service import hash_password
 from app.models.rfp_models import User
 from app.db.database import get_db
 from app.api.routes.utils import create_access_token
-from app.services.llm_service import verify_password
+from app.services.llm_services.llm_service import verify_password
 from app.schemas.schema import ForgotPasswordRequest,ResetPasswordRequest,ChangePasswordRequest,VerifyOtpRequest,LoginRequest,PasswordUpdateRequest
 from app.api.routes.utils import BackgroundTasks,generate_otp,send_email
 from datetime import datetime, timedelta
@@ -40,17 +40,14 @@ def register(
 
         otp = generate_otp()
         if request.mode == "add":  
-            # Verification URL mode → expires in 24 hours
             expiry_time = datetime.utcnow() + timedelta(hours=24)
         else:
-            # OTP mode → expires in 10 minutes
             expiry_time = datetime.utcnow() + timedelta(minutes=10)
 
         expiry_time = datetime.utcnow() + timedelta(minutes=10)
 
         if existing_user:
             existing_user.username = request.username.strip()
-            # existing_user.password = hash_password(request.password)
             existing_user.role = request.role
             existing_user.reset_otp = otp
             existing_user.otp_expiry = expiry_time
@@ -97,12 +94,11 @@ def register(
             return {"message": "User registered successfully. Please verify OTP sent to your email."}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/verify-email")
 def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db)):
     try:
-        # user = db.query(User).filter(User.email == email).first()
         user = db.query(User).filter(User.email == email.strip().lower()).first()
 
 
@@ -112,15 +108,11 @@ def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db))
         if user.is_verified:
             return {"message": "Email already verified"}
 
-        # if user.reset_otp != otp or user.otp_expiry < datetime.utcnow():
-        #     raise HTTPException(status_code=400, detail="Invalid or expired verification link")
-
         if user.reset_otp != otp:
             raise HTTPException(status_code=400, detail="Invalid verification link")
 
         if user.otp_expiry is None or datetime.utcnow() > user.otp_expiry:
             raise HTTPException(status_code=400, detail="Verification link has expired")
-
 
         user.role = role  
         user.is_verified = True
@@ -132,8 +124,7 @@ def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db))
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/verify_otp")
 def verify_otp(request: VerifyOtpRequest, db: Session = Depends(get_db)):
@@ -166,7 +157,7 @@ def verify_otp(request: VerifyOtpRequest, db: Session = Depends(get_db)):
 
         return {"message": "OTP verified successfully."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/login")
 def login(request: LoginRequest, db: Session = Depends(get_db)):
@@ -174,10 +165,10 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         user = db.query(User).filter(User.email == request.email.strip().lower()).first()
 
         if not user:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+            raise HTTPException(status_code=400, detail="Invalid credentials")
 
         if not user or not verify_password(request.password, user.password):
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+            raise HTTPException(status_code=400, detail="Invalid credentials")
 
         if not user.is_verified:
             raise HTTPException(
@@ -200,7 +191,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             "image_url": f"uploads/{user.image}" if user.image else None
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/forgot_password")
 def forgot_password(request: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -225,7 +216,7 @@ def forgot_password(request: ForgotPasswordRequest, background_tasks: Background
 
         return {"message": "one time password sent to your email"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/reset_password")
 def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
@@ -244,7 +235,7 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
 
         return {"message": "Password reset successful"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/change-password")
 def change_password(
@@ -278,7 +269,7 @@ def change_password(
 
         return {"message": "Password changed successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.patch("/update-password")
 def update_password(request: PasswordUpdateRequest, db: Session = Depends(get_db)):
@@ -302,4 +293,4 @@ def update_password(request: PasswordUpdateRequest, db: Session = Depends(get_db
 
         return {"message": "Password updated successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))

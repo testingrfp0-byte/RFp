@@ -7,7 +7,6 @@ from pinecone import Pinecone, ServerlessSpec
 
 load_dotenv()
 
-#MAIL CONFIG
 mail_config = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
     MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
@@ -24,13 +23,11 @@ mail_config = ConnectionConfig(
 SENDER_EMAIL = os.getenv("sender_email")
 SENDER_PASSWORD = os.getenv("sender_password")
 
-# AUTH CONFIG
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 SECRET_KEY = "narscbjim@$@&^@&%^&RFghgjvbdsha"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
-#OPENAI / SERPAPI CONFIG
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
 client = OpenAI(api_key=OPENAI_API_KEY)

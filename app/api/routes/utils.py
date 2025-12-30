@@ -22,7 +22,6 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 def verify_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        # print(payload) 
         return payload
     except JWTError:
         return None
@@ -38,7 +37,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         role: str = payload.get("role")
-        # print(payload)
         if not user_id or not role:
             raise credentials_exception
     except JWTError:
