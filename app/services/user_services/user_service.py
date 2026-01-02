@@ -10,7 +10,7 @@ from typing import List, Dict, Any
 from app.services.user_services.user_repository import UserRepository
 from app.services.user_services.user_validator import UserValidator
 from app.services.user_services.user_business_logic import UserBusinessLogic
-from app.services.llm_services.llm_service import get_short_name
+from app.services.llm_services.llm_service import get_short_name,get_active_keystone_text
 
 
 class UserService:
@@ -55,10 +55,13 @@ class UserService:
             self.validator.validate_rfp_document_exists(rfp_document)
             
             short_name = get_short_name(rfp_document.filename)
+            keystone_text = get_active_keystone_text(self.db, question.admin_id)
             enhanced_context, sources = self.business_logic.generate_enhanced_context(
-                question_text, 
-                rfp_id
+                question_text=question_text,
+                rfp_id=rfp_id,
+                admin_id=question.admin_id
             )
+
             
             answer = self.business_logic.generate_answer_for_question(
                 question_text, 

@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User, Reviewer, RFPQuestion, ReviewerAnswerVersion
-from app.services.llm_services.llm_service import get_similar_context, client
+from app.services.llm_services.llm_service import get_similar_context, client,get_active_keystone_text
 from app.schemas.schema import AssignReviewer, ReviewerOut, ReassignReviewerRequest
 from app.config import mail_config, LOGIN_URL
 
@@ -327,63 +327,186 @@ async def reassign_reviewer_service(request: ReassignReviewerRequest, db: Sessio
         "submit_status": existing.submit_status
     }
 
+# async def regenerate_answer_with_chat_service(request, db: Session):
+#     user_id = request.user_id
+#     ques_id = request.ques_id
+#     chat_message = request.chat_message
+
+#     reviewer = db.query(Reviewer).filter_by(user_id=user_id, ques_id=ques_id).first()
+#     if not reviewer:
+#         raise HTTPException(status_code=404, detail="Reviewer not assigned to this question")
+
+#     question = db.query(RFPQuestion).filter_by(id=ques_id).first()
+#     if not question:
+#         raise HTTPException(status_code=404, detail="Question not found")
+
+#     base_answer = reviewer.ans or ""
+
+#     context = get_similar_context(question.question_text, question.rfp_id, top_k=5)
+
+#     system_prompt = (
+#         "You are a senior proposal writer. "
+#         "Your task is to refine and regenerate proposal answers based on the user's feedback, "
+#         "while also grounding the response in the provided knowledge base context. "
+
+#         "### Keystone Data Protection Rules (MANDATORY) "
+#         "- The existing answer may include verified company data collected from a trusted internal database. "
+#         "- Do NOT modify or remove important factual details such as: "
+#         "legal company name, employee count, company address, certifications, or registration numbers. "
+#         "- Do NOT hallucinate or invent new company information. "
+#         "- You may improve sentence flow while keeping those factual elements intact. "
+
+#         "### Rewrite Mode (Highest Priority): "
+#         "If the reviewer feedback includes instructions such as 'rewrite', 'shorten', "
+#         "'summarize', 'reduce word count', 'make concise', or 'rephrase', you MUST follow "
+#         "those rewrite instructions exactly. Ignore persuasion, structure preservation, and "
+#         "other styling rules unless the user explicitly requests them. If shortening is "
+#         "requested, reduce the word count by the requested amount. Do not add content. "
+#         "Do not expand the text. Preserve the meaning only. "
+
+#         "Preserve the original structure and intent, but improve clarity, flow, and professionalism "
+#         "when the user is NOT asking for a rewrite or reduction. "
+#         "Incorporate all requested changes accurately and consistently. "
+#         "Ensure the writing style is formal, persuasive, and suitable for RFP submissions "
+#         "unless in rewrite mode. "
+#         "Do not include or repeat the original question text. "
+#         "Do not use markdown symbols, headings, or special formatting; produce plain text only. "
+#         "Avoid redundancy and ensure the final output reads as a polished, client-ready response. "
+#         "If relevant context is provided, always integrate it faithfully into the final answer."
+#     )
+
+#     user_prompt = f"""
+#     Question: {question.question_text}
+#     Previous Answer: {base_answer}
+#     Reviewer Feedback: {chat_message}
+#     Relevant Context (from KB): {context}
+
+#     Please regenerate a refined answer using the context above.
+#     """
+
+#     response = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[
+#             {"role": "system", "content": system_prompt},
+#             {"role": "user", "content": user_prompt},
+#         ],
+#         temperature=0.3,
+#     )
+
+#     refined_answer = response.choices[0].message.content.strip()
+
+#     refined_answer = re.sub(r"(\*\*|##+)", "", refined_answer)
+
+#     new_version = ReviewerAnswerVersion(
+#         user_id=user_id,
+#         ques_id=ques_id,
+#         answer=refined_answer,
+#         generated_at=datetime.utcnow()
+#     )
+#     db.add(new_version)
+
+#     reviewer.ans = refined_answer
+#     db.commit()
+#     db.refresh(new_version)
+
+#     return {
+#         "status": "success",
+#         "message": "Answer generated and stored in versions",
+#         "new_answer_version": {
+#             "id": new_version.id,
+#             "ques_id": ques_id,
+#             "user_id": user_id,
+#             "answer": refined_answer,
+#             "generated_at": new_version.generated_at,
+#         }
+#     }
+
+
+
 async def regenerate_answer_with_chat_service(request, db: Session):
     user_id = request.user_id
     ques_id = request.ques_id
     chat_message = request.chat_message
 
-    reviewer = db.query(Reviewer).filter_by(user_id=user_id, ques_id=ques_id).first()
-    if not reviewer:
-        raise HTTPException(status_code=404, detail="Reviewer not assigned to this question")
+    # 1️⃣ Validate reviewer assignment
+    reviewer = db.query(Reviewer).filter_by(
+        user_id=user_id,
+        ques_id=ques_id
+    ).first()
 
+    if not reviewer:
+        raise HTTPException(
+            status_code=404,
+            detail="Reviewer not assigned to this question"
+        )
+
+    # 2️⃣ Load question
     question = db.query(RFPQuestion).filter_by(id=ques_id).first()
     if not question:
-        raise HTTPException(status_code=404, detail="Question not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Question not found"
+        )
 
     base_answer = reviewer.ans or ""
 
-    context = get_similar_context(question.question_text, question.rfp_id, top_k=5)
-
-    system_prompt = (
-        "You are a senior proposal writer. "
-        "Your task is to refine and regenerate proposal answers based on the user's feedback, "
-        "while also grounding the response in the provided knowledge base context. "
-
-        "### Keystone Data Protection Rules (MANDATORY) "
-        "- The existing answer may include verified company data collected from a trusted internal database. "
-        "- Do NOT modify or remove important factual details such as: "
-        "legal company name, employee count, company address, certifications, or registration numbers. "
-        "- Do NOT hallucinate or invent new company information. "
-        "- You may improve sentence flow while keeping those factual elements intact. "
-
-        "### Rewrite Mode (Highest Priority): "
-        "If the reviewer feedback includes instructions such as 'rewrite', 'shorten', "
-        "'summarize', 'reduce word count', 'make concise', or 'rephrase', you MUST follow "
-        "those rewrite instructions exactly. Ignore persuasion, structure preservation, and "
-        "other styling rules unless the user explicitly requests them. If shortening is "
-        "requested, reduce the word count by the requested amount. Do not add content. "
-        "Do not expand the text. Preserve the meaning only. "
-
-        "Preserve the original structure and intent, but improve clarity, flow, and professionalism "
-        "when the user is NOT asking for a rewrite or reduction. "
-        "Incorporate all requested changes accurately and consistently. "
-        "Ensure the writing style is formal, persuasive, and suitable for RFP submissions "
-        "unless in rewrite mode. "
-        "Do not include or repeat the original question text. "
-        "Do not use markdown symbols, headings, or special formatting; produce plain text only. "
-        "Avoid redundancy and ensure the final output reads as a polished, client-ready response. "
-        "If relevant context is provided, always integrate it faithfully into the final answer."
+    # 3️⃣ Fetch ACTIVE Keystone (MANDATORY)
+    keystone_text = get_active_keystone_text(
+        db=db,
+        admin_id=question.admin_id
     )
 
+    # 4️⃣ Fetch RFP semantic context
+    rfp_context = get_similar_context(
+        question.question_text,
+        question.rfp_id,
+        top_k=5
+    )
+
+    # 5️⃣ SYSTEM PROMPT (Keystone FIRST)
+    system_prompt = (
+        "You are a senior proposal writer refining an RFP response.\n\n"
+
+        "### KEYSTONE DATA (PRIMARY SOURCE — DO NOT VIOLATE):\n"
+        f"{keystone_text}\n\n"
+
+        "### NON-NEGOTIABLE RULES:\n"
+        "- Keystone Data is the single source of truth for company facts\n"
+        "- Do NOT modify, remove, or invent company details\n"
+        "- Do NOT add new services, certifications, locations, or metrics\n"
+        "- If reviewer feedback conflicts with Keystone Data, Keystone wins\n\n"
+
+        "### Rewrite Mode (Highest Priority):\n"
+        "- If feedback includes rewrite / shorten / summarize / rephrase,\n"
+        "  follow those instructions exactly\n"
+        "- Do NOT add new content when shortening\n"
+        "- Preserve meaning only\n\n"
+
+        "### General Rules:\n"
+        "- Improve clarity and flow when not in rewrite mode\n"
+        "- Produce plain text only (no markdown)\n"
+        "- Do NOT repeat the question text\n"
+        "- Output must be client-ready and professional\n"
+    )
+
+    # 6️⃣ USER PROMPT
     user_prompt = f"""
-    Question: {question.question_text}
-    Previous Answer: {base_answer}
-    Reviewer Feedback: {chat_message}
-    Relevant Context (from KB): {context}
+Question:
+{question.question_text}
 
-    Please regenerate a refined answer using the context above.
-    """
+Existing Answer:
+{base_answer}
 
+Reviewer Feedback:
+{chat_message}
+
+RFP Context:
+{rfp_context}
+
+Regenerate the answer while strictly respecting Keystone Data.
+"""
+
+    # 7️⃣ LLM Call
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -394,9 +517,9 @@ async def regenerate_answer_with_chat_service(request, db: Session):
     )
 
     refined_answer = response.choices[0].message.content.strip()
-
     refined_answer = re.sub(r"(\*\*|##+)", "", refined_answer)
 
+    # 8️⃣ Save new version
     new_version = ReviewerAnswerVersion(
         user_id=user_id,
         ques_id=ques_id,
@@ -411,7 +534,7 @@ async def regenerate_answer_with_chat_service(request, db: Session):
 
     return {
         "status": "success",
-        "message": "Answer generated and stored in versions",
+        "message": "Answer regenerated using Keystone Data",
         "new_answer_version": {
             "id": new_version.id,
             "ques_id": ques_id,

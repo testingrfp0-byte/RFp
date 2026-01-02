@@ -3,7 +3,7 @@ Business logic layer for user-related operations
 Contains core business logic and rules
 """
 from sqlalchemy.orm import Session
-from app.models.rfp_models import User
+from app.models.rfp_models import User,KeystoneFile
 from app.services.llm_services.llm_service import (
     get_similar_context, 
     generate_answer_with_context,
@@ -17,7 +17,7 @@ from typing import List, Dict, Any
 
 from .user_repository import UserRepository
 from .user_validator import UserValidator
-
+from fastapi import HTTPException
 
 class UserBusinessLogic:
     """Business logic for user operations"""
@@ -51,18 +51,63 @@ class UserBusinessLogic:
             "answer": latest_answer.answer if latest_answer else None
         }
     
-    def generate_enhanced_context(self, question_text: str, rfp_id: int) -> tuple:
-        """Generate enhanced context with keystone information"""
-        contexts, sources = get_similar_context(question_text, rfp_id)
-        keystone_info = find_related_keystone(self.db, question_text)
+    # def generate_enhanced_context(self, question_text: str, rfp_id: int) -> tuple:
+    #     """Generate enhanced context with keystone information"""
+    #     contexts, sources = get_similar_context(question_text, rfp_id)
+    #     keystone_info = find_related_keystone(self.db, question_text)
         
-        if keystone_info:
-            enhanced_context = f"{contexts}\n\nCompany Information:\n{keystone_info}"
-        else:
-            enhanced_context = contexts
+    #     if keystone_info:
+    #         enhanced_context = f"{contexts}\n\nCompany Information:\n{keystone_info}"
+    #     else:
+    #         enhanced_context = contexts
         
-        return enhanced_context, sources
+    #     return enhanced_context, sources
     
+
+    def generate_enhanced_context(
+        self,
+        question_text: str,
+        rfp_id: int,
+        admin_id: int
+    ) -> tuple:
+        """
+        Generate enhanced context using:
+        1. Keystone XLS (PRIMARY source)
+        2. RFP semantic context (SECONDARY source)
+        """
+
+        # 1️⃣ Get RFP context
+        rfp_context, sources = get_similar_context(
+            question_text,
+            rfp_id
+        )
+
+        # 2️⃣ Get ACTIVE Keystone (MANDATORY)
+        keystone = self.db.query(KeystoneFile).filter(
+            KeystoneFile.admin_id == admin_id,
+            KeystoneFile.is_active == True
+        ).first()
+
+        if not keystone:
+            raise HTTPException(
+                status_code=400,
+                detail="Keystone Data not uploaded. Please upload Keystone XLS."
+            )
+
+        # 3️⃣ Combine context (Keystone FIRST)
+        enhanced_context = f"""
+    KEYSTONE DATA (PRIMARY SOURCE – MUST FOLLOW):
+    {keystone.extracted_text}
+
+    ----------------------------------------
+
+    RFP CONTEXT (REFERENCE):
+    {rfp_context}
+    """
+
+        return enhanced_context, ["keystone", "rfp"]
+
+
     def generate_answer_for_question(self, question_text: str, enhanced_context: str, short_name: str) -> str:
         """Generate and clean answer"""
         answer = generate_answer_with_context(question_text, enhanced_context, short_name)

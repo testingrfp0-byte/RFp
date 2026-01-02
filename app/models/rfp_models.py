@@ -161,3 +161,16 @@ class KeystoneData(Base):
     default_answer = Column(Text, nullable=True)  
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+
+# ================================
+class KeystoneFile(Base):
+    __tablename__ = "keystone_files"
+    id = Column(Integer, primary_key=True, index=True)
+    admin_id = Column(Integer, nullable=False)
+    filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    extracted_text = Column(Text, nullable=False)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)

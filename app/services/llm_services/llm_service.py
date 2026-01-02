@@ -2,7 +2,7 @@ import os,fitz,requests,re,math,docx,json,io,pytesseract
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from app.models.rfp_models import KeystoneData, User
+from app.models.rfp_models import KeystoneData, User,KeystoneFile
 from app.config import client, index,SERPAPI_KEY
 from pptx import Presentation
 from PyPDF2 import PdfReader
@@ -768,3 +768,18 @@ def find_related_keystone(db: Session, question_text: str):
             return r.default_answer
 
     return None
+
+def get_active_keystone_text(db: Session, admin_id: int) -> str:
+    keystone = db.query(KeystoneFile).filter(
+        KeystoneFile.admin_id == admin_id,
+        KeystoneFile.is_active == True
+    ).first()
+
+    if not keystone:
+        raise HTTPException(
+            status_code=400,
+            detail="Keystone Data not uploaded. Please upload Keystone XLS."
+        )
+
+    return keystone.extracted_text
+
