@@ -19,14 +19,12 @@ def get_user(
 ):
     return get_all_users(db, current_user)
 
-#######################################
 @router.get("/get_assign_users")
 def get_assigned(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     return get_assigned_users(db, current_user)
-#######################################
 
 @router.get("/userdetails/{user_id}")
 def get_user_by_id_route(
