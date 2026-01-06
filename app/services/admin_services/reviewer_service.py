@@ -428,7 +428,6 @@ async def regenerate_answer_with_chat_service(request, db: Session):
     ques_id = request.ques_id
     chat_message = request.chat_message
 
-    # 1️⃣ Validate reviewer assignment
     reviewer = db.query(Reviewer).filter_by(
         user_id=user_id,
         ques_id=ques_id
@@ -440,7 +439,6 @@ async def regenerate_answer_with_chat_service(request, db: Session):
             detail="Reviewer not assigned to this question"
         )
 
-    # 2️⃣ Load question
     question = db.query(RFPQuestion).filter_by(id=ques_id).first()
     if not question:
         raise HTTPException(
@@ -450,20 +448,17 @@ async def regenerate_answer_with_chat_service(request, db: Session):
 
     base_answer = reviewer.ans or ""
 
-    # 3️⃣ Fetch ACTIVE Keystone (MANDATORY)
     keystone_text = get_active_keystone_text(
         db=db,
         admin_id=question.admin_id
     )
 
-    # 4️⃣ Fetch RFP semantic context
     rfp_context = get_similar_context(
         question.question_text,
         question.rfp_id,
         top_k=5
     )
 
-    # 5️⃣ SYSTEM PROMPT (Keystone FIRST)
     system_prompt = (
         "You are a senior proposal writer refining an RFP response.\n\n"
 
@@ -489,7 +484,6 @@ async def regenerate_answer_with_chat_service(request, db: Session):
         "- Output must be client-ready and professional\n"
     )
 
-    # 6️⃣ USER PROMPT
     user_prompt = f"""
 Question:
 {question.question_text}
@@ -506,7 +500,6 @@ RFP Context:
 Regenerate the answer while strictly respecting Keystone Data.
 """
 
-    # 7️⃣ LLM Call
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -519,7 +512,6 @@ Regenerate the answer while strictly respecting Keystone Data.
     refined_answer = response.choices[0].message.content.strip()
     refined_answer = re.sub(r"(\*\*|##+)", "", refined_answer)
 
-    # 8️⃣ Save new version
     new_version = ReviewerAnswerVersion(
         user_id=user_id,
         ques_id=ques_id,

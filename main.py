@@ -10,6 +10,9 @@ from app.models import RFPDocument
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
 
 app = FastAPI(title="RFP Generator")
 
@@ -20,6 +23,20 @@ app.add_middleware(
     allow_methods=["*"],  
     allow_headers=["*"], 
 )
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+
+        # Disable cache for APIs
+        if request.url.path.startswith(("/api", "/auth", "/admin")):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+
+        return response
+
+app.add_middleware(CacheControlMiddleware)
+
 
 @app.exception_handler(FastAPIHTTPException)
 async def http_exception_handler(

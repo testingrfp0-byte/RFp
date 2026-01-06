@@ -1,9 +1,11 @@
 import io
+import uuid
 import pandas as pd
 from fastapi import UploadFile, HTTPException, status
 from sqlalchemy.orm import Session
-from app.models.rfp_models import KeystoneData
+from app.models.rfp_models import KeystoneData,User,KeystoneFile
 from app.schemas.schema import KeystoneDynamicFormRequest, KeystonePatchRequest
+from app.services.llm_services.llm_service import extract_xls_text
 
 async def extract_col(file: UploadFile, current_user):
     try:
@@ -166,4 +168,57 @@ def delete_form(form_id: int, db: Session, current_user):
     return {
         "status": "success",
         "message": f"Form with ID {form_id} deleted successfully."
+    }
+
+async def upload_keystone_file(
+    file: UploadFile,
+    db: Session,
+    current_user: User
+):
+    if current_user.role.lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized"
+        )
+
+    if not file.filename.endswith((".xls", ".xlsx")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Excel files allowed"
+        )
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty"
+        )
+
+    path = f"uploads/{uuid.uuid4()}_{file.filename}"
+    with open(path, "wb") as f:
+        f.write(file_bytes)
+
+    extracted_text = extract_xls_text(path)
+
+    db.query(KeystoneFile).filter(
+        KeystoneFile.admin_id == current_user.id,
+        KeystoneFile.is_active.is_(True)
+    ).update({"is_active": False})
+
+    keystone = KeystoneFile(
+        admin_id=current_user.id,
+        filename=file.filename,
+        file_path=path,
+        extracted_text=extracted_text,
+        is_active=True
+    )
+
+    db.add(keystone)
+    db.commit()
+    db.refresh(keystone)
+
+    return {
+        "status": "success",
+        "keystone_id": keystone.id,
+        "filename": keystone.filename
     }

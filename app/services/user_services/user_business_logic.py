@@ -75,14 +75,11 @@ class UserBusinessLogic:
         1. Keystone XLS (PRIMARY source)
         2. RFP semantic context (SECONDARY source)
         """
-
-        # 1️⃣ Get RFP context
         rfp_context, sources = get_similar_context(
             question_text,
             rfp_id
         )
 
-        # 2️⃣ Get ACTIVE Keystone (MANDATORY)
         keystone = self.db.query(KeystoneFile).filter(
             KeystoneFile.admin_id == admin_id,
             KeystoneFile.is_active == True
@@ -94,7 +91,6 @@ class UserBusinessLogic:
                 detail="Keystone Data not uploaded. Please upload Keystone XLS."
             )
 
-        # 3️⃣ Combine context (Keystone FIRST)
         enhanced_context = f"""
     KEYSTONE DATA (PRIMARY SOURCE – MUST FOLLOW):
     {keystone.extracted_text}

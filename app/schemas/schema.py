@@ -179,3 +179,10 @@ class KeystonePatchRequest(BaseModel):
     field_detail: Optional[str] = None
     unnamed: Optional[str] = None
     ringer_answer: Optional[str] = None
+
+class KeystoneFileResponse(BaseModel):
+    id: int
+    filename: str
+    file_path: str
+    uploaded_at: datetime
+    is_active: bool

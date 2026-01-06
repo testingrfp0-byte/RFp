@@ -783,3 +783,17 @@ def get_active_keystone_text(db: Session, admin_id: int) -> str:
 
     return keystone.extracted_text
 
+def extract_xls_text(file_path: str) -> str:
+    sheets = pd.read_excel(file_path, sheet_name=None)
+    output = []
+
+    for sheet_name, df in sheets.items():
+        output.append(f"\n=== {sheet_name} ===\n")
+        for _, row in df.iterrows():
+            row_text = " | ".join(
+                str(cell) for cell in row if pd.notna(cell)
+            )
+            if row_text.strip():
+                output.append(row_text)
+
+    return "\n".join(output)
