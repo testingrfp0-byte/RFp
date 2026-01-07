@@ -2,6 +2,8 @@ import io
 import uuid
 import pandas as pd
 from fastapi import UploadFile, HTTPException, status
+from fastapi.responses import FileResponse
+import os
 from sqlalchemy.orm import Session
 from app.models.rfp_models import KeystoneData,User,KeystoneFile
 from app.schemas.schema import KeystoneDynamicFormRequest, KeystonePatchRequest
@@ -222,3 +224,80 @@ async def upload_keystone_file(
         "keystone_id": keystone.id,
         "filename": keystone.filename
     }
+
+def delete_keystone_file(
+    keystone_id: int,
+    db: Session,
+    current_user: User,
+):
+    if current_user.role.lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can delete Keystone files"
+        )
+
+    keystone = (
+        db.query(KeystoneFile)
+        .filter(
+            KeystoneFile.id == keystone_id,
+            KeystoneFile.admin_id == current_user.id
+        )
+        .first()
+    )
+
+    if not keystone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Keystone file not found"
+        )
+
+    if keystone.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Active Keystone file cannot be deleted. Please activate another file first."
+        )
+
+    db.delete(keystone)
+    db.commit()
+
+    return {
+        "status": "success",
+        "message": "Keystone file deleted successfully"
+    }
+
+def view_keystone_file(
+    keystone_id: int,
+    db: Session,
+    current_user: User,
+):
+    if current_user.role.lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can view Keystone files"
+        )
+
+    keystone = (
+        db.query(KeystoneFile)
+        .filter(
+            KeystoneFile.id == keystone_id,
+            KeystoneFile.admin_id == current_user.id
+        )
+        .first()
+    )
+
+    if not keystone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Keystone file not found"
+        )
+    if not keystone.file_path or not os.path.exists(keystone.file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Keystone file not found on server"
+        )
+
+    return FileResponse(
+        path=keystone.file_path,
+        filename=keystone.filename,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )

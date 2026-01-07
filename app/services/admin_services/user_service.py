@@ -3,6 +3,7 @@ from fastapi import UploadFile, File, Form, Depends, HTTPException,status
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User, RFPQuestion, Reviewer, ReviewerAnswerVersion
 from app.schemas.schema import UserOut, reviwerdelete,UpdateProfileRequest
+from sqlalchemy.exc import IntegrityError
 
 def get_all_users(db: Session, current_user):
     try:
@@ -94,10 +95,28 @@ async def update_profile_service(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if username:
+    if username and username != user.username:
+        existing_user = db.query(User).filter(
+            User.username == username,
+            User.id != current_user.id
+        ).first()
+        if existing_user:
+            raise HTTPException(
+                status_code=400, 
+                detail="Username already exists. Please choose a different username."
+            )
         user.username = username
 
-    if email:
+    if email and email != user.email:
+        existing_email = db.query(User).filter(
+            User.email == email,
+            User.id != current_user.id
+        ).first()
+        if existing_email:
+            raise HTTPException(
+                status_code=400, 
+                detail="Email already exists. Please use a different email."
+            )
         user.email = email
 
     if image_base64:
@@ -111,8 +130,18 @@ async def update_profile_service(
 
         user.image = image_name
 
-    db.commit()
-    db.refresh(user)
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError as e:
+        db.rollback()
+        if "username" in str(e.orig):
+            raise HTTPException(status_code=400, detail="Username already exists")
+        elif "email" in str(e.orig):
+            raise HTTPException(status_code=400, detail="Email already exists")
+        else:
+            raise HTTPException(status_code=400, detail="Database constraint violation")
+    
     return {
         "message": "Profile updated successfully",
         "username": user.username,

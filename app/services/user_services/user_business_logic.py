@@ -116,6 +116,7 @@ class UserBusinessLogic:
     def create_and_save_answer_version(self, user_id: int, question_id: int, answer: str):
         """Create and save answer version"""
         version = self.repository.create_answer_version(self.db, user_id, question_id, answer)
+        self.db.commit()
         return version
     
     def update_submission_status(self, reviewer, status: str):
