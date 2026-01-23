@@ -1,11 +1,10 @@
-from fastapi import Depends, HTTPException, APIRouter
-from fastapi_mail import FastMail, MessageSchema, MessageType
 from sqlalchemy.orm import Session
-
-from app.config import mail_config, LOGIN_URL
 from app.db.database import get_db
+from app.config import mail_config, LOGIN_URL
 from app.schemas.schema import NotificationRequest
+from fastapi import Depends, HTTPException, APIRouter
 from app.models.rfp_models import User, Reviewer, RFPQuestion
+from fastapi_mail import FastMail, MessageSchema, MessageType
 
 router = APIRouter()
 

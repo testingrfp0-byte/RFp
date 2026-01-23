@@ -1,7 +1,3 @@
-"""
-Validation layer for user-related operations
-Handles all business rule validations
-"""
 from fastapi import HTTPException, status
 
 

@@ -1,9 +1,6 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16
-    container_name: postgres_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: root
@@ -16,7 +13,6 @@ services:
 
   web:
     build: .
-    container_name: fastapi_app
     depends_on:
       - db
     ports:
@@ -24,8 +20,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:root@db:5432/test1
     restart: always
-    # volumes:
-    #   - .:/app
 
 volumes:
   postgres_data:

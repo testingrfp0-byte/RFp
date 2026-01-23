@@ -3,15 +3,16 @@ from datetime import datetime
 from typing import List
 from fastapi import (
     UploadFile, File, Form, Depends, HTTPException, APIRouter, status, Request)
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from docx import Document
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from app.config import GENERATED_FOLDER
 from app.db.database import get_db
-from app.models.rfp_models import User, RFPDocument
+from app.models.rfp_models import User, RFPDocument,GeneratedRFPDocument
 from app.api.routes.utils import get_current_user
 from app.utils.admin_function import upload_documents
 
@@ -20,71 +21,115 @@ router = APIRouter()
 @router.post("/generate-rfp-doc/")
 async def generate_rfp_doc(
     rfp_id: int,
-    request: Request, 
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role.lower() != "admin":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
-    
-    rfp_doc = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized"
+        )
+
+    rfp_doc = db.query(RFPDocument).filter(
+        RFPDocument.id == rfp_id,
+        RFPDocument.is_deleted == False
+    ).first()
+
     if not rfp_doc:
-        raise HTTPException(status_code=404, detail="RFP not found")
+        raise HTTPException(
+            status_code=404,
+            detail="RFP not found"
+        )
 
     unanswered = []
+
     for q in rfp_doc.questions:
-        has_reviewer_ans = any(rev.submit_status == "submitted" for rev in q.reviewers)
+        if getattr(q, "is_deleted", False):
+            continue
+
+        has_reviewer_ans = any(
+            rev.submit_status == "submitted"
+            for rev in q.reviewers
+        )
+
         has_ai_ans = bool(q.answer_versions)
+
         if not (has_reviewer_ans or has_ai_ans):
             unanswered.append(q.question_text)
+
 
     if unanswered:
         raise HTTPException(
             status_code=409,
-            detail={
-                "message": f"Report cannot be generated. {len(unanswered)} question(s) are not analyzed yet.",
-                "unanswered_questions": unanswered
+            detail="Some questions are not answered yet",
+            headers={
+                "X-Unanswered-Count": str(len(unanswered))
             }
         )
 
-    summary_obj = rfp_doc.summary
-    if not summary_obj:
-        raise HTTPException(status_code=404, detail="Executive summary not found")
-    executive_summary = summary_obj.summary_text
+    if not rfp_doc.summary:
+        raise HTTPException(
+            status_code=404,
+            detail="Executive summary not found"
+        )
 
+    executive_summary = rfp_doc.summary.summary_text
     company_name = getattr(rfp_doc, "client_name", "Ringer")
+
+    last_version = db.query(func.max(GeneratedRFPDocument.version)) \
+        .filter(GeneratedRFPDocument.rfp_id == rfp_id) \
+        .scalar() or 0
+
+    new_version = last_version + 1
 
     doc = Document()
 
     try:
-        logo_path = "image.png" 
+        logo_path = "image.png"
         doc.add_picture(logo_path, width=Inches(1.5))
-        last_paragraph = doc.paragraphs[-1]
-        last_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    except Exception as e:
-        print("Logo could not be added:", e)
+        doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.LEFT
+    except Exception:
+        pass
 
     doc.add_heading("RFP Proposal Response", level=0)
-    doc.add_paragraph(f"Presented by Ringer")
+    doc.add_paragraph("Presented by Ringer")
     doc.add_paragraph(f"Client: {company_name}")
-    doc.add_paragraph(f"Generated on {datetime.utcnow().strftime('%Y-%m-%d')}")
+    doc.add_paragraph(
+        f"Generated on {datetime.utcnow().strftime('%Y-%m-%d')}"
+    )
 
     doc.add_page_break()
     doc.add_heading("Executive Summary", level=1)
     doc.add_paragraph(executive_summary)
 
     os.makedirs(GENERATED_FOLDER, exist_ok=True)
-    original_pdf_name = rfp_doc.filename
-    base_name = os.path.splitext(original_pdf_name)[0]
-    file_name = f"{base_name}_response.docx"
+
+    base_name = os.path.splitext(rfp_doc.filename)[0]
+    file_name = f"{base_name}_v{new_version}.docx"
     file_path = os.path.join(GENERATED_FOLDER, file_name)
+
     doc.save(file_path)
 
+    gen_doc = GeneratedRFPDocument(
+        rfp_id=rfp_id,
+        file_name=file_name,
+        file_path=file_path,
+        generated_by=current_user.id,
+        version=new_version
+    )
+
+    db.add(gen_doc)
+    db.commit()
+    db.refresh(gen_doc)
+
     base_url = str(request.base_url).rstrip("/")
-    download_url = f"{base_url}/download/{file_name}"
+    download_url = f"{base_url}/documents/{gen_doc.id}/download"
 
     return {
         "message": "RFP proposal generated successfully",
+        "document_id": gen_doc.id,
+        "version": new_version,
         "download_url": download_url
     }
 
@@ -94,47 +139,35 @@ async def list_rfp_docs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    try:
-        if current_user.role.lower() != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized - only admins can access this endpoint"
-            )
-
-        if not os.path.exists(GENERATED_FOLDER):
-            return JSONResponse(content={
-                "message": "No documents found",
-                "role": current_user.role,
-                "docs": []
-            })
-
-        files = os.listdir(GENERATED_FOLDER)
-        files = [f for f in files if f.endswith(".docx") or f.endswith(".pdf")]
-
-        docs = []
-        for f in files:
-            docs.append({
-                "file_name": f,
-                "download_url": f"{request.base_url}download/{f}"
-            })
-
-        return {
-            "message": f"{len(docs)} document(s) found",
-            "role": current_user.role,
-            "docs": docs
-        }
-
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "message": "An error occurred while listing documents",
-                "error": str(e),
-                "docs": []
-            }
+    if current_user.role.lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized"
         )
+
+    docs = (
+        db.query(GeneratedRFPDocument)
+        .filter(GeneratedRFPDocument.is_deleted == False)
+        .order_by(GeneratedRFPDocument.generated_at.desc())
+        .all()
+    )
+
+    base_url = str(request.base_url).rstrip("/")
+
+    return {
+        "count": len(docs),
+        "docs": [
+            {
+                "document_id": d.id,
+                "rfp_id": d.rfp_id,
+                "file_name": d.file_name,
+                "version": d.version,
+                "generated_at": d.generated_at,
+                "download_url": f"{base_url}/documents/{d.id}/download"
+            }
+            for d in docs
+        ]
+    }
 
 @router.post("/upload-library")
 def upload_library_new(
@@ -165,3 +198,60 @@ def upload_library_new(
             detail="This RFP already exist."
         )
 
+@router.get("/documents/{doc_id}/download")
+def download_generated_document(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role.lower() != "admin":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    doc = db.query(GeneratedRFPDocument).filter(
+        GeneratedRFPDocument.id == doc_id,
+        GeneratedRFPDocument.is_deleted == False
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not os.path.exists(doc.file_path):
+        raise HTTPException(
+            status_code=404,
+            detail="File not found on server"
+        )
+
+    return FileResponse(
+        path=doc.file_path,
+        filename=doc.file_name,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+@router.delete("/delete-gen-doc/{doc_id}")
+def delete_generated_document(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role.lower() != "admin":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    doc = db.query(GeneratedRFPDocument).filter(
+        GeneratedRFPDocument.id == doc_id,
+        GeneratedRFPDocument.is_deleted == False
+    ).first()
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if os.path.exists(doc.file_path):
+        os.remove(doc.file_path)
+
+    doc.is_deleted = True
+    doc.deleted_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "message": "Document deleted successfully",
+        "document_id": doc_id
+    }

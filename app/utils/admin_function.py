@@ -41,13 +41,6 @@ from app.services.admin_services.user_service import (
     update_profile_service,
     delete_reviewer_service)
 
-from app.services.admin_services.keystone_service import (
-    extract_col,
-    save_form,
-    fetch_form,
-    update_form,
-    delete_form)
-
 from app.services.admin_services.scoring_service import (
     analyze_overall_score_service)
 

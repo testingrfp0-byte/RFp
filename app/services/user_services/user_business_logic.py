@@ -1,15 +1,9 @@
-"""
-Business logic layer for user-related operations
-Contains core business logic and rules
-"""
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User,KeystoneFile
 from app.services.llm_services.llm_service import (
     get_similar_context, 
     generate_answer_with_context,
     analyze_answer_score_only,
-    get_short_name,
-    find_related_keystone
 )
 from app.api.routes.utils import clean_answer
 from datetime import datetime
@@ -42,6 +36,7 @@ class UserBusinessLogic:
             "project_name": question.rfp.project_name,
             "question_id": question.id,
             "question_text": question.question_text,
+            "is_deleted": question.rfp.is_deleted,
             "section": question.section,
             "status": reviewer.status,
             "assigned_at": question.assigned_at,
@@ -51,19 +46,6 @@ class UserBusinessLogic:
             "answer": latest_answer.answer if latest_answer else None
         }
     
-    # def generate_enhanced_context(self, question_text: str, rfp_id: int) -> tuple:
-    #     """Generate enhanced context with keystone information"""
-    #     contexts, sources = get_similar_context(question_text, rfp_id)
-    #     keystone_info = find_related_keystone(self.db, question_text)
-        
-    #     if keystone_info:
-    #         enhanced_context = f"{contexts}\n\nCompany Information:\n{keystone_info}"
-    #     else:
-    #         enhanced_context = contexts
-        
-    #     return enhanced_context, sources
-    
-
     def generate_enhanced_context(
         self,
         question_text: str,
@@ -102,7 +84,6 @@ class UserBusinessLogic:
     """
 
         return enhanced_context, ["keystone", "rfp"]
-
 
     def generate_answer_for_question(self, question_text: str, enhanced_context: str, short_name: str) -> str:
         """Generate and clean answer"""

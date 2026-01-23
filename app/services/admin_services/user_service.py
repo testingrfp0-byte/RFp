@@ -1,8 +1,8 @@
 import base64
-from fastapi import UploadFile, File, Form, Depends, HTTPException,status
+from fastapi import  HTTPException,status
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User, RFPQuestion, Reviewer, ReviewerAnswerVersion
-from app.schemas.schema import UserOut, reviwerdelete,UpdateProfileRequest
+from app.schemas.schema import UserOut, reviwerdelete
 from sqlalchemy.exc import IntegrityError
 
 def get_all_users(db: Session, current_user):

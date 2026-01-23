@@ -1,16 +1,8 @@
-"""
-Main entry point for user-related operations
-This file stays OUTSIDE the user folder and imports everything from inside
-Location: app/services/user_function.py (NOT in app/services/user/)
-"""
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User
 from typing import Dict, Any, List
 from fastapi import HTTPException
 from app.services.user_services.user_service import UserService
-from app.services.user_services.user_repository import UserRepository
-from app.services.user_services.user_validator import UserValidator
-from app.services.user_services.user_business_logic import UserBusinessLogic
 
 def assigned_questions(db: Session, current_user: User) -> List[Dict[str, Any]]:
     """
@@ -28,7 +20,6 @@ def assigned_questions(db: Session, current_user: User) -> List[Dict[str, Any]]:
         return service.get_assigned_questions(current_user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def generate_answers_service(db: Session, current_user: User, question_id: int) -> Dict[str, Any]:
     """
@@ -50,7 +41,6 @@ def generate_answers_service(db: Session, current_user: User, question_id: int) 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 def answer_versions(db: Session, current_user: User, question_id: int) -> Dict[str, Any]:
     """
     Get all answer versions for a specific question
@@ -68,7 +58,6 @@ def answer_versions(db: Session, current_user: User, question_id: int) -> Dict[s
         return service.get_answer_versions(current_user, question_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def update_answer_service(db: Session, current_user: User, question_id: int, new_answer: str) -> Dict[str, Any]:
     """
@@ -92,7 +81,6 @@ def update_answer_service(db: Session, current_user: User, question_id: int, new
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-
 def submit_service(db: Session, current_user: User, question_id: int, status: str) -> Dict[str, Any]:
     """
     Submit answer for a specific question
@@ -114,7 +102,6 @@ def submit_service(db: Session, current_user: User, question_id: int, status: st
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 def chech_service(db: Session, current_user: User) -> Dict[str, Any]:
     """
     Check status of all user assignments
@@ -133,7 +120,6 @@ def chech_service(db: Session, current_user: User) -> Dict[str, Any]:
         raise http_exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def filter_service(db: Session, current_user: User, status: str) -> Dict[str, Any]:
     """
@@ -154,7 +140,6 @@ def filter_service(db: Session, current_user: User, status: str) -> Dict[str, An
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def analyze_single_question(rfp_id: int, question_id: int, db: Session, current_user: User) -> Dict[str, Any]:
     """

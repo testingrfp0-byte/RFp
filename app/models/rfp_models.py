@@ -30,6 +30,13 @@ class RFPDocument(Base):
         cascade="all, delete-orphan"
     )
 
+    generated_docs = relationship(
+        "GeneratedRFPDocument",
+        back_populates="rfp",
+        cascade="all, delete-orphan",
+        passive_deletes=True
+    )
+
 class CompanySummary(Base):
     __tablename__ = "company_summaries"
     id = Column(Integer, primary_key=True, index=True)
@@ -150,17 +157,17 @@ class ReviewerAnswerVersion(Base):
         ),
     )
    
-class KeystoneData(Base):
-    __tablename__ = "keystone_data"
+# class KeystoneData(Base):
+#     __tablename__ = "keystone_data"
 
-    id = Column(Integer, primary_key=True, index=True)
-    section = Column(String, nullable=False)         
-    field_group = Column(String, nullable=True)  
-    field_detail = Column(String, nullable=True)   
-    field_type = Column(String, nullable=True)   
-    default_answer = Column(Text, nullable=True)  
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+#     id = Column(Integer, primary_key=True, index=True)
+#     section = Column(String, nullable=False)         
+#     field_group = Column(String, nullable=True)  
+#     field_detail = Column(String, nullable=True)   
+#     field_type = Column(String, nullable=True)   
+#     default_answer = Column(Text, nullable=True)  
+#     created_at = Column(DateTime(timezone=True), server_default=func.now())
+#     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 
@@ -174,3 +181,17 @@ class KeystoneFile(Base):
     extracted_text = Column(Text, nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+
+class GeneratedRFPDocument(Base):
+    __tablename__ = "generated_rfp_documents"
+    id = Column(Integer, primary_key=True, index=True)
+    rfp_id = Column(Integer,ForeignKey("rfp_documents.id", ondelete="CASCADE"),nullable=False)
+    file_name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    generated_by = Column(Integer, ForeignKey("users.id"))
+    generated_at = Column(DateTime, default=datetime.utcnow)
+    version = Column(Integer, default=1)
+    is_deleted = Column(Boolean, default=False)
+    deleted_at = Column(DateTime, nullable=True)
+    rfp = relationship("RFPDocument",back_populates="generated_docs")
+    user = relationship("User")

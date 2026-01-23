@@ -1,7 +1,3 @@
-"""
-Service layer for user-related operations
-Orchestrates business logic and repository calls
-"""
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User
 from fastapi import HTTPException
@@ -75,8 +71,8 @@ class UserService:
                 answer
             )
             
-            # self.business_logic.update_reviewer_answer(reviewer, answer)
-            # self.db.commit()
+            self.business_logic.update_reviewer_answer(reviewer, answer)
+            self.db.commit()
             
             return {
                 "question_id": question.id,
@@ -143,33 +139,7 @@ class UserService:
         except Exception as e:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
-    
-    # def submit_answer(self, current_user: User, question_id: int, status: str) -> Dict[str, Any]:
-    #     """Submit answer for a question"""
-    #     try:
-    #         self.validator.validate_submission_status(status)
-            
-    #         reviewer = self.repository.get_reviewer(self.db, current_user.id, question_id)
-    #         print(status)
-            
-    #         self.validator.validate_reviewer_exists(reviewer)
-            
-    #         self.business_logic.update_submission_status(reviewer, status)
-    #         self.db.commit()
-            
-    #         return {
-    #             "message": "Submission successful",
-    #             "question_id": question_id,
-    #             "answer": reviewer.ans,
-    #             "submit_status": status
-    #         }
-        
-    #     except HTTPException as http_exc:
-    #         raise http_exc
-    #     except Exception as e:
-    #         raise HTTPException(status_code=500, detail=str(e))
-
-
+      
     def submit_answer(
             self,
             current_user: User,
@@ -177,8 +147,6 @@ class UserService:
             status: str) -> Dict[str, Any]:
         try:
             self.validator.validate_submission_status(status)
-
-            # 2️⃣ Get reviewer assignment
             reviewer = self.repository.get_reviewer(
                 self.db,
                 current_user.id,
@@ -186,7 +154,6 @@ class UserService:
             )
             self.validator.validate_reviewer_exists(reviewer)
 
-            # 3️⃣ Fetch latest generated answer (DRAFT)
             latest_version = (
                 self.db.query(ReviewerAnswerVersion)
                 .filter(
@@ -203,15 +170,12 @@ class UserService:
                     detail="No generated answer found. Please generate an answer first."
                 )
 
-            # 4️⃣ Publish answer → ADMIN READS FROM HERE
             reviewer.ans = latest_version.answer
 
-            # 5️⃣ Update workflow states
             reviewer.submit_status = "submitted"
             reviewer.status = "pending"
             reviewer.submitted_at = datetime.utcnow()
 
-            # 6️⃣ Persist changes
             self.db.commit()
 
             return {
@@ -224,9 +188,8 @@ class UserService:
         except HTTPException:
             raise
         except Exception as e:
-            self.db.rollback()  # ✅ safety rollback
+            self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
-
 
     def check_user_status(self, current_user: User) -> Dict[str, Any]:
         """Check status of all user assignments"""

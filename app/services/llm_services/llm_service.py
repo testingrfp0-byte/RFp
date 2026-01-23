@@ -2,7 +2,7 @@ import os,fitz,requests,re,math,docx,json,io,pytesseract
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from app.models.rfp_models import KeystoneData, User,KeystoneFile
+from app.models.rfp_models import User,KeystoneFile
 from app.config import client, index,SERPAPI_KEY
 from pptx import Presentation
 from PyPDF2 import PdfReader
@@ -757,17 +757,6 @@ def clean_extracted_text(text: str) -> str:
     text = re.sub(r"[ \t]{2,}", " ", text)
 
     return text.strip()
-
-def find_related_keystone(db: Session, question_text: str):
-    records = db.query(KeystoneData).all()
-
-    question_lower = question_text.lower()
-
-    for r in records:
-        if r.field_detail and r.field_detail.lower() in question_lower:
-            return r.default_answer
-
-    return None
 
 def get_active_keystone_text(db: Session, admin_id: int) -> str:
     keystone = db.query(KeystoneFile).filter(

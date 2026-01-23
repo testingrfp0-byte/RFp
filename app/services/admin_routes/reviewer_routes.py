@@ -1,7 +1,6 @@
-from fastapi import Depends, HTTPException, APIRouter, status
-from sqlalchemy.orm import Session
-
 from app.db.database import get_db
+from sqlalchemy.orm import Session
+from fastapi import Depends, HTTPException, APIRouter, status
 from app.schemas.schema import (
     AssignReviewer, ReviewerOut, reviwerdelete, ReassignReviewerRequest)
 from app.models.rfp_models import User

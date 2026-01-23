@@ -1,18 +1,17 @@
 import os
-import hashlib
 import shutil
+import hashlib
 from datetime import datetime
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-
+from app.config import UPLOAD_FOLDER, index
 from app.models.rfp_models import RFPDocument
 from app.services.llm_services.llm_service import (
     extract_text_from_file,
     generate_summary,
     get_embedding
 )
-from app.config import UPLOAD_FOLDER, index
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 def upload_documents(files, project_name, category, current_user, db: Session):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)

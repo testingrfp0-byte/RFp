@@ -1,9 +1,7 @@
-from fastapi import Depends, APIRouter, Form
 from sqlalchemy.orm import Session
-
 from app.db.database import get_db
-from app.schemas.schema import UpdateProfileRequest
 from app.models.rfp_models import User
+from fastapi import Depends, APIRouter, Form
 from app.api.routes.utils import get_current_user
 from app.utils.admin_function import (
     get_all_users, get_assigned_users,
@@ -51,7 +49,6 @@ async def update_profile(
         image_name=image_name,
         image_base64=image_base64,
     )
-
 
 @router.get("/check_submit")
 def check(

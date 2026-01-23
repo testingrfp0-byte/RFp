@@ -1,15 +1,14 @@
-import hashlib
-import asyncio
 import os
 import uuid
-import shutil
+import hashlib
+import asyncio
+from sqlalchemy import func
 from datetime import datetime
+from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException, status
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from app.models.rfp_models import RFPDocument, RFPQuestion, CompanySummary
+from app.models.rfp_models import RFPDocument, RFPQuestion, CompanySummary,GeneratedRFPDocument
 from app.services.llm_services.llm_service import (
     extract_text_from_pdf,
     extract_company_background_from_rfp,
@@ -261,15 +260,32 @@ def restore_rfp_doc(rfp_id: int, db: Session, current_user):
             .first()
         )
 
-        if not rfp:
-            raise HTTPException(
-                status_code=404,
-                detail="RFP not found in Trash."
-            )
+        if rfp:
+            rfp.is_deleted = False
+            rfp.deleted_at = None
+            db.commit()
+            return {"message": "RFP restored successfully."}
 
-        rfp.is_deleted = False
-        rfp.deleted_at = None
-        db.commit()
+        gen_doc = (
+            db.query(GeneratedRFPDocument)
+            .filter(
+                GeneratedRFPDocument.id == rfp_id,
+                GeneratedRFPDocument.is_deleted == True
+            )
+            .first()
+        )
+
+        if gen_doc:
+            gen_doc.is_deleted = False
+            gen_doc.deleted_at = None
+            db.commit()
+            return {"message": "Generated document restored successfully."}
+
+
+
+        # rfp.is_deleted = False
+        # rfp.deleted_at = None
+        # db.commit()
 
         return {"message": "RFP restored successfully."}
 
@@ -295,21 +311,39 @@ def permanent_delete_rfp(rfp_id: int, db: Session, current_user):
             .first()
         )
 
-        if not rfp:
-            raise HTTPException(
-                status_code=404,
-                detail="RFP not found in Trash."
+        if rfp:
+            if rfp.file_path and os.path.exists(rfp.file_path):
+                os.remove(rfp.file_path)
+
+            delete_rfp_embeddings(rfp_id)
+
+            db.delete(rfp)
+            db.commit()
+
+            return {"message": "RFP permanently deleted."}
+        
+        gen_doc = (
+            db.query(GeneratedRFPDocument)
+            .filter(
+                GeneratedRFPDocument.id == rfp_id,
+                GeneratedRFPDocument.is_deleted == True
             )
+            .first()
+        )
 
-        if rfp.file_path and os.path.exists(rfp.file_path):
-            os.remove(rfp.file_path)
+        if gen_doc:
+            if gen_doc.file_path and os.path.exists(gen_doc.file_path):
+                os.remove(gen_doc.file_path)
 
-        delete_rfp_embeddings(rfp_id)
+            db.delete(gen_doc)
+            db.commit()
 
-        db.delete(rfp)
-        db.commit()
-
-        return {"message": "RFP permanently deleted."}
+            return {"message": "Generated document permanently deleted."}
+        
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found in Trash."
+        )
 
     except HTTPException as http_exc:
         raise http_exc
@@ -329,13 +363,14 @@ def get_trash_documents(db: Session, current_user):
 
         deleted_docs = (
             db.query(RFPDocument)
-            .filter(RFPDocument.is_deleted == True)
+            .filter(RFPDocument.is_deleted == True).filter()
             .order_by(RFPDocument.deleted_at.desc())
             .all()
         )
 
-        return [
+        rfp_list = [
             {
+                "type": "rfp",
                 "id": doc.id,
                 "filename": doc.filename,
                 "project_name": doc.project_name,
@@ -350,6 +385,31 @@ def get_trash_documents(db: Session, current_user):
             for doc in deleted_docs
         ]
 
+        deleted_generated_docs = (
+            db.query(GeneratedRFPDocument)
+            .filter(GeneratedRFPDocument.is_deleted == True)
+            .order_by(GeneratedRFPDocument.deleted_at.desc())
+            .all()
+        )
+
+        generated_docs_list = [
+            {
+                "type": "generated_doc",
+                "id": doc.id,
+                "rfp_id": doc.rfp_id,
+                "file_name": doc.file_name,
+                "version": doc.version,
+                "generated_at": doc.generated_at,
+                "deleted_at": doc.deleted_at,
+                "days_left": (
+                    7 - (datetime.utcnow() - doc.deleted_at).days
+                    if doc.deleted_at else None
+                )
+            }
+            for doc in deleted_generated_docs
+        ]
+        return rfp_list + generated_docs_list
+
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
@@ -357,3 +417,4 @@ def get_trash_documents(db: Session, current_user):
             status_code=500,
             detail=f"Failed to fetch trash list: {str(e)}"
         )
+    
