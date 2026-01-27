@@ -386,6 +386,18 @@ async def regenerate_answer_with_chat_service(request, db: Session):
         "- Produce plain text only (no markdown)\n"
         "- Do NOT repeat the question text\n"
         "- Output must be client-ready and professional\n"
+        "- Use 'we' or 'our' to refer to the company\n"
+        "- Never use 'I'\n"
+        "- Refer to the issuer by their short name from RFP context\n"
+        "- Anchor responses to RFP specifics from context\n"
+        "- If feedback asks to add details, only use Keystone Data or RFP context — state 'No additional information available' if missing\n"
+        "- For examples or case studies, only use anonymized or generalized ones from Keystone if available\n"
+        "- Ensure response is concise yet comprehensive\n"
+        "- Handle common feedback types:\n"
+        "  - Clarify: Rephrase ambiguous parts without adding info\n"
+        "  - Expand: Add depth only from sources\n"
+        "  - Remove: Eliminate specified elements exactly\n"
+        "  - Align: Ensure matches RFP requirements verbatim\n"
     )
 
     user_prompt = f"""

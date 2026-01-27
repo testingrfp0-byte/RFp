@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.models.rfp_models import User, RFPQuestion, Reviewer, ReviewerAnswerVersion
 from app.schemas.schema import UserOut, reviwerdelete
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import desc
+
 
 def get_all_users(db: Session, current_user):
     try:
@@ -13,7 +15,7 @@ def get_all_users(db: Session, current_user):
                 detail="Only admins can access User details."
             )
 
-        users = db.query(User).all()
+        users = db.query(User).order_by(desc((User.id))).all()
 
         return [
             UserOut(
@@ -178,3 +180,4 @@ async def delete_reviewer_service(request: reviwerdelete, db: Session):
         "message": f"User (id={request.user_id}, role={user.role}) "
                    f"and all related reviewer data deleted successfully"
     }
+
