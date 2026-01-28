@@ -58,5 +58,8 @@ def analyze_overall_score_service(rfp_id: int, db: Session):
             "total_answers_analyzed": len(all_scores),
             "overall_score": overall_score
         }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
