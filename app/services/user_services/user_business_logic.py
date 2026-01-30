@@ -62,10 +62,12 @@ class UserBusinessLogic:
             rfp_id
         )
 
-        keystone = self.db.query(KeystoneFile).filter(
-            KeystoneFile.admin_id == admin_id,
-            KeystoneFile.is_active == True
-        ).first()
+        keystone = (
+        self.db.query(KeystoneFile)
+        .filter(KeystoneFile.admin_id == admin_id)
+        .order_by(KeystoneFile.uploaded_at.desc())
+        .first()
+    )
 
         if not keystone:
             raise HTTPException(

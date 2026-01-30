@@ -185,4 +185,3 @@ class KeystoneFileResponse(BaseModel):
     filename: str
     file_path: str
     uploaded_at: datetime
-    is_active: bool

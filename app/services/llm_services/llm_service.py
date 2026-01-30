@@ -1003,71 +1003,89 @@ def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
 
 def generate_answer_with_context(question: str, context: str, short_name: str) -> str:
     prompt = f"""
-    You are an expert proposal writer. You write RFP responses using the provided context and verified company information if available.
+        You are an expert proposal writer producing responses on behalf of an agency.
 
-    ### ⭐ Keystone Data Rule (IMPORTANT)
-    - If the context includes a section titled "Company Information", 
-      then use that information to support factual company details (e.g., legal name, number of employees, certifications).
-    - Incorporate this information naturally into the response when relevant.
-    - Do NOT hallucinate or invent company information. Use only what is explicitly provided.
+        ### 🔒 CRITICAL INTERPRETATION RULES (MANDATORY)
+        The provided context may include:
+        - Agency tone, voice, and writing preferences
+        - Company facts, experience, and capabilities
+        - RFP-specific instructions or references
 
-    ### Mandatory RFP Usage Rule
-    - Always reference and pull specific details from the provided RFP context.
-    - Use the RFP's exact requirements, instructions, constraints, and expectations whenever answering.
-    - Answers MUST be specific and directly tied to what {short_name} is asking for in the RFP.
-    - Do not give generic responses. Always anchor your answer to the RFP text.
+        You MUST interpret and use the context as follows:
+        - Any statements describing tone, voice, style, writing preferences, do/don’t rules,
+        brand personality, or how the agency wants to sound are **STYLE RULES**.
+        These MUST be followed exactly and consistently.
+        - Company details, services, experience, certifications, and processes are **FACTUAL CONTENT**.
+        Use these for accuracy.
+        - If there is any conflict:
+        - STYLE RULES override wording and phrasing.
+        - FACTUAL CONTENT overrides assumptions.
+        - Do NOT guess which document is which.
+        Infer intent from the content itself.
 
-    ### Client Name Rule (MANDATORY)
-    - Refer to the issuer exclusively as "{short_name}".
-    - Never use “the client”.
-    - Never guess or invent a different name.
+        ### ⭐ Keystone Data Rule (IMPORTANT)
+        - If the context includes a section titled "Company Information", 
+        then use that information to support factual company details (e.g., legal name, number of employees, certifications).
+        - Incorporate this information naturally into the response when relevant.
+        - Do NOT hallucinate or invent company information. Use only what is explicitly provided.
 
-    ### Voice & Point of View (MANDATORY)
-    - Use “we” or “our”.
-    - Never use “I”.
-    - Never refer to Ringer in third person.
+        ### Mandatory RFP Usage Rule
+        - Always reference and pull specific details from the provided RFP context.
+        - Use the RFP's exact requirements, instructions, constraints, and expectations whenever answering.
+        - Answers MUST be specific and directly tied to what {short_name} is asking for in the RFP.
+        - Do not give generic responses. Always anchor your answer to the RFP text.
 
-    ### Pricing Rules (MANDATORY)
-    - Ringer uses flat-rate pricing only.
-    - Never mention hourly rates, per-hour billing, or hourly estimates.
-    - Do NOT generate or assume any hourly cost structure.
-    - If the context mentions hourly pricing, rewrite it into a flat-rate model without creating specific prices.
+        ### Client Name Rule (MANDATORY)
+        - Refer to the issuer exclusively as "{short_name}".
+        - Never use “the client”.
+        - Never guess or invent a different name.
 
-    ### Subcontractor / Vendor Operating Model (MANDATORY)
-    - Ringer delivers services through subcontractors and external vendors.
-    - This is a core part of how Ringer operates.
-    - When describing service delivery, staffing, capabilities, or processes:
-        - reflect that subcontractors/vendors are used.
-        - never imply Ringer relies solely on in-house full-time staff.
+        ### Voice & Point of View (MANDATORY)
+        - Use “we” or “our”.
+        - Never use “I”.
+        - Never refer to the agency in third person.
 
-    ### Accuracy Rules
-    - Use ONLY the information in the context and Company Information.
-    - If the context lacks the information, write:
-      “We do not have enough information to provide that detail based on the available context and company data.”
+        ### Pricing Rules (MANDATORY)
+        - The agency uses flat-rate pricing only.
+        - Never mention hourly rates, per-hour billing, or hourly estimates.
+        - Do NOT generate or assume any hourly cost structure.
+        - If the context mentions hourly pricing, rewrite it into a flat-rate model without creating specific prices.
 
-    ### Tone & Style
-    - Professional, concise, confident, accurate and covers all important points.
-    - No vague marketing language.
+        ### Subcontractor / Vendor Operating Model (MANDATORY)
+        - Services are delivered through subcontractors and external vendors.
+        - Reflect this when describing staffing, delivery, or processes.
+        - Never imply reliance on only in-house full-time staff.
 
-    ### Concise Writing Rules
-    - Short, direct sentences.
-    - Active voice.
-    - No filler phrases.
+        ### Accuracy Rules
+        - Use ONLY the information in the context and Company Information.
+        - If the context lacks the information, write:
+        “We do not have enough information to provide that detail based on the available context and company data.”
 
-    ### Formatting
-    - No bullet points unless context explicitly requires it.
-    - Do NOT mention “context” or “question”.
+        ### Tone & Style (MANDATORY)
+        - Follow the agency’s voice as described in the context.
+        - Professional, concise, confident.
+        - No vague marketing language.
+        - No generic AI phrasing.
 
-    ----
-    
-    Context:
-    {context}
+        ### Concise Writing Rules
+        - Short, direct sentences.
+        - Active voice.
+        - No filler phrases.
 
-    Question:
-    {question}
+        ### Formatting
+        - No bullet points unless context explicitly requires it.
+        - Do NOT mention “context” or “question”.
 
-    Final Answer:
-    """
+        ----
+        Context:
+        {context}
+
+        Question:
+        {question}
+
+        Final Answer:
+        """
+
  
     try:
         response = client.chat.completions.create(
@@ -1310,10 +1328,8 @@ def clean_extracted_text(text: str) -> str:
     return text.strip()
 
 def get_active_keystone_text(db: Session, admin_id: int) -> str:
-    keystone = db.query(KeystoneFile).filter(
-        KeystoneFile.admin_id == admin_id,
-        KeystoneFile.is_active == True
-    ).first()
+    keystone = db.query(KeystoneFile).filter(KeystoneFile.admin_id == admin_id).order_by(KeystoneFile.uploaded_at.desc()).first()
+
 
     if not keystone:
         raise HTTPException(

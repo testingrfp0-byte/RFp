@@ -157,21 +157,6 @@ class ReviewerAnswerVersion(Base):
         ),
     )
    
-# class KeystoneData(Base):
-#     __tablename__ = "keystone_data"
-
-#     id = Column(Integer, primary_key=True, index=True)
-#     section = Column(String, nullable=False)         
-#     field_group = Column(String, nullable=True)  
-#     field_detail = Column(String, nullable=True)   
-#     field_type = Column(String, nullable=True)   
-#     default_answer = Column(Text, nullable=True)  
-#     created_at = Column(DateTime(timezone=True), server_default=func.now())
-#     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-
-
-# ================================
 class KeystoneFile(Base):
     __tablename__ = "keystone_files"
     id = Column(Integer, primary_key=True, index=True)
@@ -180,7 +165,7 @@ class KeystoneFile(Base):
     file_path = Column(String, nullable=False)
     extracted_text = Column(Text, nullable=False)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
-    is_active = Column(Boolean, default=True)
+    # is_active = Column(Boolean, default=True)
 
 class GeneratedRFPDocument(Base):
     __tablename__ = "generated_rfp_documents"
