@@ -1280,33 +1280,6 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def analyze_answer_score_only(question_text: str, answer_text: str) -> float:
     prompt = f"""
 You are acting as a strict RFP evaluator.
