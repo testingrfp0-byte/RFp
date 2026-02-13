@@ -94,10 +94,575 @@ def generate_search_queries(rfp_text: str) -> list:
 
     return [line.strip(" -•") for line in content.split("\n") if line.strip()]
 
+# def extract_company_background_from_rfp(rfp_text: str) -> str:
+#     """
+#     Extracts 3 fully detailed sections from an RFP:
+#     1. Purpose of the RFP (including Buyer Priorities & Win Themes)
+#     2. Company Background
+#     3. Submission Details & Requirements
+#     """
+
+#     user_prompt = f"""
+# You are a senior RFP analyst with deep expertise in procurement, compliance, and government/enterprise documentation.
+
+# Your task is to extract and reorganize information from the provided RFP text into **exactly three sections**.
+
+# ============================================================
+# **CRITICAL EXTRACTION RULES (DO NOT VIOLATE)**  
+# ============================================================
+
+# **1. ZERO HALLUCINATIONS - EXTRACTION ONLY**  
+# - You are EXTRACTING, not writing. Every word must come from the RFP text.
+# - If information is not present in the RFP, write "No information available" for that element.
+# - NEVER infer, assume, add context, or use external knowledge.
+# - NEVER add examples, best practices, or general advice not in the RFP.
+# - NEVER invent company names, dates, requirements, contact details, or any data not explicitly stated.
+
+# **2. ABSOLUTE COMPLETENESS - MISS NOTHING**  
+# - Read the ENTIRE RFP document from beginning to end before extracting.
+# - Scan ALL sections including: cover page, table of contents, main body, appendices, attachments, footnotes, headers, footers, sidebars, and exhibits.
+# - Information is often scattered across multiple sections - systematically gather ALL occurrences.
+# - For each type of information (dates, contacts, requirements), search the ENTIRE document.
+# - If something appears multiple times with different details, include the most complete version.
+# - Pay special attention to:
+#   * Fine print and small text
+#   * Tables and structured data (extract ALL rows, not samples)
+#   * Appendices labeled "Required Forms" or "Submission Instructions"
+#   * Sections near the end of the document (often contain critical deadlines)
+
+# **3. VERBATIM PRESERVATION WITH COMPLETE ACCURACY**  
+# - Use the RFP's exact wording, terminology, and phrasing.
+# - Preserve ALL technical terms, acronyms, and specific requirements exactly as written.
+# - Copy ALL numbers, dates, times, addresses, names, phone numbers, emails, URLs EXACTLY as they appear.
+# - For dates: include day of week if mentioned, timezone if specified, full year.
+# - For contacts: include full name, title, department, phone, email, address if provided.
+# - For requirements: preserve exact wording including "must," "shall," "should," "required," etc.
+# - Only merge sentences when absolutely necessary for flow - never change meaning or lose detail.
+
+# **4. STRICT SECTION BOUNDARIES**  
+# - Purpose content ONLY in Section 1
+# - Background content ONLY in Section 2  
+# - Submission/procedural content ONLY in Section 3
+# - NO overlap between sections
+# - NO duplication of information
+
+# **5. SYSTEMATIC MULTI-PASS VERIFICATION**  
+
+# **First Pass - Initial Read:**
+# - Read entire document once to understand structure and locate information
+
+# **Second Pass - Section-by-Section Extraction:**
+# - Extract Section 1 content from entire document
+# - Extract Section 2 content from entire document  
+# - Extract Section 3 content from entire document
+
+# **Third Pass - Verification:**
+# Before finalizing, verify each checklist:
+
+# □ Section 1 Checklist:
+#   - Purpose statement captured
+#   - Problem/need identified
+#   - Goals and objectives listed
+#   - Scope of work described
+#   - Expected outcomes noted
+  
+# □ Section 2 Checklist:
+#   - Organization name(s) captured
+#   - Location information included
+#   - Organization type identified
+#   - Size/scale information noted
+#   - Mission/values extracted (if present)
+  
+# □ Section 3 Checklist (MOST CRITICAL):
+#   - ALL deadlines captured (proposal due, questions due, pre-bid meetings, etc.)
+#   - ALL contact information extracted (name, title, phone, email for each person)
+#   - Submission method clearly stated
+#   - ALL required documents/forms listed
+#   - ALL formatting requirements noted
+#   - ALL eligibility criteria included
+#   - ALL evaluation criteria captured with point values
+#   - Special instructions or conditions noted
+
+# □ Final Accuracy Check:
+#   - All dates match original exactly
+#   - All numbers match original exactly
+#   - All names match original exactly
+#   - No content added that isn't in source
+#   - No important details omitted
+
+# ============================================================
+# **SECTION REQUIREMENTS**
+# ============================================================
+
+# ### **Section 1: Purpose of the RFP**
+
+# **COMPREHENSIVE EXTRACTION INSTRUCTIONS:**
+
+# Extract ALL content that explains WHY this RFP exists and WHAT is being procured.
+
+# **Must Include Everything From:**
+# - Executive Summary sections
+# - Introduction or Overview sections
+# - Background or Context sections
+# - Project Description sections
+# - Statement of Need or Problem Statement
+# - Purpose or Intent statements
+# - Objectives or Goals sections
+# - Scope of Work or Scope of Services
+# - Project Timeline or Phases (high-level)
+# - Expected Deliverables or Outcomes
+# - Strategic rationale or business case
+# - Stakeholder information (who benefits, who is involved)
+# - Funding source or budget context (ONLY when explaining purpose, not detailed budget)
+# - Any narrative that explains the "why" behind the procurement
+
+# **Search These Locations:**
+# - First 10 pages of document
+# - Any section titled: Purpose, Background, Introduction, Overview, Project Description, Scope, Need, Problem, Objectives
+# - Preamble or cover letter from issuing organization
+# - Executive summary
+
+# **Must Exclude From Section 1:**
+# - Submission deadlines, due dates, or timelines for vendors
+# - How to submit proposals (email, portal, address)
+# - Proposal formatting requirements (fonts, margins, page limits)
+# - Required forms or attachments to submit
+# - Contact information for questions
+# - Evaluation criteria details or scoring
+# - Vendor qualifications or eligibility requirements
+
+# **If no purpose found:** "No information available on the purpose of the RFP."
+
+# ---
+
+# **Then add these subsections:**
+
+# **Buyer Priorities & Win Themes:**  
+
+# Extract 3-10 bullet points that reveal what the buyer values most (or fewer if insufficient data).
+
+# **Where to Search:**
+# - Evaluation criteria sections (look for high-point items)
+# - Sections with words like: "critical," "essential," "priority," "key," "must-have," "required"
+# - Repeated themes mentioned 3+ times in the document
+# - Mission/values statements from the issuing organization
+# - Any section describing ideal vendor characteristics
+# - Scoring rubrics or rating scales
+
+# **What to Extract:**
+# - Capabilities the buyer emphasizes repeatedly
+# - Values mentioned in mission/vision statements
+# - High-weighted evaluation criteria
+# - "Must-have" requirements vs "nice-to-have"
+# - Strategic priorities mentioned in background sections
+# - Themes around: quality, innovation, cost, experience, approach, collaboration, etc.
+
+# **Format as:**
+# - Clear, concise statements of buyer priorities
+# - Use RFP's language but format as actionable priorities
+# - Example: "Demonstrated experience with [specific technology mentioned in RFP]"
+# - Example: "Commitment to [specific value the buyer emphasized]"
+
+# **If none found:** "No buyer priorities or win themes identified."
+
+# ---
+
+# **Key Phrases to Echo in Responses:**  
+
+# Extract 3-15 short verbatim quotes (5-30 words each) that reveal the buyer's voice, values, and expectations.
+
+# **Where to Search:**
+# - Mission statement sections
+# - Organizational values or principles
+# - Evaluation criteria descriptions
+# - Scope of work narratives
+# - Any section where the issuing organization describes their work, culture, or approach
+# - Introduction or welcome letters
+# - Background sections about the organization
+
+# **What to Look For:**
+# - How they describe their own work (e.g., "we take a methodical approach")
+# - What they value (e.g., "innovation and collaboration are essential")
+# - How they want vendors to work (e.g., "must demonstrate flexibility")
+# - Their organizational culture (e.g., "we prioritize community engagement")
+# - Their expectations (e.g., "deliverables must be evidence-based")
+
+# **Format as:**
+# - Each phrase in quotation marks
+# - Keep quotes 5-30 words maximum
+# - Only use EXACT quotes from the RFP
+# - Include attribution if from a specific section (e.g., "From Mission Statement: '...'")
+
+# **If none found:** "No key phrases identified."
+
+# ============================================================
+
+# ### **Section 2: Company Background**
+
+# **COMPREHENSIVE EXTRACTION INSTRUCTIONS:**
+
+# Extract EVERY detail about the organization issuing the RFP.
+
+# **Must Include All Available Information On:**
+
+# **Identity & Structure:**
+# - Full legal name of organization
+# - Common name, abbreviations, or acronyms used
+# - Organization type (public sector, private company, nonprofit, government agency, etc.)
+# - Parent organization or governing body (if applicable)
+# - Organizational structure or hierarchy
+
+# **Location & Geography:**
+# - Headquarters address (full address if provided)
+# - Branch locations, satellite offices, or service areas
+# - Geographic regions served
+# - Counties, cities, or jurisdictions covered
+
+# **History & Development:**
+# - Founding date or year established
+# - Key milestones in organizational history
+# - Historical context or evolution
+# - Previous names or organizational changes
+
+# **Mission & Values:**
+# - Mission statement (full text if provided)
+# - Vision statement
+# - Core values or guiding principles
+# - Strategic priorities or focus areas
+# - Organizational mandates or charter
+
+# **Size & Scale:**
+# - Number of employees or staff count
+# - Annual budget or revenue (if mentioned)
+# - Number of facilities or locations
+# - Service capacity or volume metrics
+# - Client/customer base size
+
+# **Operations:**
+# - Core programs or service lines
+# - Departments, divisions, or units
+# - Key operational areas or functions
+# - Service delivery model
+# - Population or community served
+
+# **Governance & Leadership:**
+# - Board structure or governing body
+# - Leadership positions mentioned
+# - Key executives or administrators
+# - Advisory committees or councils
+
+# **Partnerships & Affiliations:**
+# - Partner organizations or collaborators
+# - Professional associations or memberships
+# - Network affiliations
+# - Industry certifications or accreditations
+
+# **Recognition & Standing:**
+# - Awards or recognition received
+# - Certifications or accreditations held
+# - Rankings or ratings
+# - Notable achievements
+
+# **Strategic Context:**
+# - Current strategic initiatives
+# - Organizational priorities or goals
+# - Recent developments or changes
+# - Future plans or direction
+# - DEI (Diversity, Equity, Inclusion) commitments or policies
+
+# **Search These Locations Thoroughly:**
+# - "About Us" sections
+# - "Organizational Background" sections
+# - Cover letters or introductory narratives
+# - Appendices about the organization
+# - Headers, footers, or letterhead information
+# - Organizational charts or diagrams
+# - Any descriptive narrative about the issuing entity
+# - References scattered throughout the document
+
+# **Must Exclude From Section 2:**
+# - Project scope details (that belongs in Section 1)
+# - Submission requirements or procedures
+# - Vendor qualifications needed
+# - Evaluation or selection criteria
+# - Deadlines or contact information
+
+# **If no background:** "No company background information available."
+
+# ============================================================
+
+# ### **Section 3: Submission Details & Requirements**
+
+# **THIS IS THE MOST CRITICAL SECTION - ABSOLUTE COMPLETENESS REQUIRED**
+
+# **SEARCH STRATEGY:**
+# You MUST search the ENTIRE document for submission-related information. It may be in:
+# - Dedicated "Submission Requirements" sections
+# - "Instructions to Bidders" sections
+# - Appendices or exhibits
+# - Fine print at the end of sections
+# - Footnotes or sidebars
+# - Mixed into other sections
+# - Tables or checklists
+# - Cover pages or final pages
+
+# **Extract EVERY SINGLE:**
+
+# **DEADLINES & CRITICAL DATES:**
+# - Proposal submission deadline (date, time, timezone)
+# - Question submission deadline (date, time, timezone)
+# - Pre-bid conference date/time/location
+# - Site visit date/time/location
+# - Addendum release schedule
+# - Award notification date
+# - Contract start date
+# - Any other dates or milestones
+# (For each date: include day of week if mentioned, exact time, AM/PM, timezone)
+
+# **CONTACT INFORMATION (Extract ALL):**
+# For each contact person, capture:
+# - Full name
+# - Title or position
+# - Department or division
+# - Phone number (with extension if provided)
+# - Email address
+# - Physical address (if provided)
+# - Mailing address (if different)
+# - Website or portal URL
+# - Fax number (if provided)
+# - Preferred contact method
+# - Hours of availability for questions
+
+# **SUBMISSION LOGISTICS:**
+# - HOW to submit (email, online portal, physical delivery, courier, etc.)
+# - WHERE to submit (physical address, email address, portal URL)
+# - WHEN to submit (exact date and time)
+# - Number of copies required (originals vs copies, physical vs digital)
+# - File formats accepted (PDF, Word, Excel, etc.)
+# - File size limitations
+# - File naming conventions required
+# - Email subject line requirements (if email submission)
+# - Packaging requirements (sealed envelope, specific labeling, etc.)
+# - Delivery confirmation requirements
+# - Late submission policy
+
+# **REQUIRED DOCUMENTS & FORMS (List ALL by name):**
+# - Bid forms or proposal forms (with form numbers)
+# - Certifications required (with specific names)
+# - Insurance certificates (types and coverage amounts)
+# - Financial statements (which years, audited vs unaudited)
+# - Tax documents (W-9, exemption certificates, etc.)
+# - References or past performance (how many, what format)
+# - Resumes or staff qualifications (for which positions)
+# - Work samples or portfolio examples (how many, what type)
+# - Affidavits or sworn statements
+# - Bond forms (bid bond, performance bond, payment bond)
+# - Registration certificates or licenses
+# - Appendices or attachments to complete
+# - Any other forms mentioned by name or number
+
+# **PROPOSAL CONTENT REQUIREMENTS:**
+# - Required sections or narratives (list each)
+# - Executive summary requirements (length, content)
+# - Technical proposal requirements
+# - Cost proposal requirements (separate vs combined)
+# - Page limits (overall and by section)
+# - Word count limits
+# - Formatting specifications:
+#   * Font type and size
+#   * Margin requirements
+#   * Line spacing
+#   * Paper size
+#   * Single vs double-sided
+#   * Binding requirements
+# - Table of contents requirements
+# - Page numbering requirements
+# - Section organization or order
+# - Cover page requirements
+# - Appendix limitations
+
+# **ELIGIBILITY & COMPLIANCE:**
+# - Vendor registration requirements (where to register, by when)
+# - Business licensing requirements
+# - Professional certifications required
+# - Insurance requirements (types: general liability, professional liability, workers comp, etc.)
+#   * Coverage amounts for each type
+#   * Certificate holder information
+# - Bonding requirements (bid bond, performance bond amounts)
+# - Minimum years in business
+# - Minimum project experience
+# - Geographic restrictions or preferences
+# - Size standards (small business, MBE/WBE, etc.)
+# - Conflict of interest disclosures
+# - Debarment certifications
+# - Background check requirements
+# - Subcontractor disclosure rules (who, when, how to disclose)
+# - Joint venture requirements
+# - Minimum qualifications checklist
+# - Disqualification criteria
+# - Mandatory requirements vs preferences
+
+# **EVALUATION & SELECTION:**
+# - Evaluation criteria (list each criterion)
+# - Point allocations or weights for each criterion
+# - Total points possible
+# - Minimum score to advance
+# - Scoring methodology or rubric
+# - Evaluation phases or stages
+# - Selection committee composition
+# - Selection process timeline
+# - Award decision factors
+# - Tie-breaking procedures
+# - Negotiation process (if applicable)
+# - Best and Final Offer (BAFO) process
+# - Interview or presentation requirements
+# - Protest procedures or appeal rights
+# - Award notification method
+
+# **QUESTIONS & CLARIFICATIONS:**
+# - How to submit questions (email, portal, written)
+# - Question deadline (date and time)
+# - Where questions will be answered (addendum, website, email)
+# - Format for questions
+# - Anonymous vs attributed questions
+# - Addendum release schedule
+# - How addenda will be distributed
+
+# **SPECIAL CONDITIONS & REQUIREMENTS:**
+# - Confidentiality or non-disclosure requirements
+# - Proprietary information marking procedures
+# - Public records disclosure notices
+# - Freedom of Information Act (FOIA) notices
+# - Contract terms preview or sample contract
+# - Payment terms (net 30, progress payments, etc.)
+# - Invoice requirements
+# - Performance requirements or KPIs
+# - Reporting obligations (what, when, to whom)
+# - Site visit requirements (mandatory vs optional)
+# - Attendance requirements (pre-bid conference, etc.)
+# - Sustainability or environmental requirements
+# - Local hiring or preference requirements
+# - Prevailing wage requirements
+# - Equal opportunity or affirmative action requirements
+# - Accessibility requirements (ADA, Section 508, etc.)
+# - Data security or privacy requirements
+# - Background check or clearance requirements
+# - Drug testing requirements
+# - Any other special terms, conditions, or requirements
+
+# **BUDGET & PRICING:**
+# (Only include if these are submission requirements, not project budget)
+# - Cost proposal format required
+# - Pricing sheet or template to use
+# - What cost elements to include/exclude
+# - Separate pricing for optional services
+# - Unit pricing requirements
+# - Not-to-exceed amounts or budget caps
+
+# **Format Requirements for Section 3:**
+# - Present as a comprehensive bullet list
+# - Each bullet should be a complete, clear requirement
+# - Use exact wording from RFP whenever possible
+# - Group related items together for clarity
+# - Include ALL details for each item (don't summarize)
+# - If a requirement has multiple parts, include all parts
+# - If unclear, include the exact RFP language
+
+# **Example Format:**
+# - Proposal due date: [exact date, time, timezone as stated in RFP]
+# - Primary contact: [Full Name, Title, Phone, Email as stated]
+# - Submission method: [exact method as described in RFP]
+# - Required documents: [list each by exact name]
+# - Insurance required: [exact types and amounts as stated]
+# - Evaluation criteria: [each criterion with point value]
+# - [Continue for ALL requirements found]
+
+# **If any requirement is unclear or ambiguous:** Include it anyway using the exact RFP language.
+
+# **If no details found:** "No submission details or requirements available."
+
+# ============================================================
+# **OUTPUT FORMAT (STRICT)**
+# ============================================================
+
+# Section 1: Purpose of the RFP  
+# [Comprehensive, detailed extraction of why this RFP was issued and what is being procured. Written in flowing paragraphs using the RFP's own language. Include ALL relevant context from the entire document.]
+
+# Buyer Priorities & Win Themes:  
+# - [Priority 1 - based on RFP text with specific examples]  
+# - [Priority 2 - based on RFP text with specific examples]  
+# - [Continue for all priorities identified, minimum 3, maximum 10]
+
+# Key Phrases to Echo in Responses:  
+# - "[Exact verbatim quote 1 from RFP]"  
+# - "[Exact verbatim quote 2 from RFP]"  
+# - [Continue for all key phrases found, minimum 3, maximum 15]
+
+# Section 2: Company Background  
+# [Comprehensive, detailed extraction of ALL information about the issuing organization. Written in flowing paragraphs. Cover every aspect listed in the requirements. Leave no detail unmentioned.]
+
+# Section 3: Submission Details & Requirements  
+# [Exhaustive bullet list of EVERY procedural, administrative, and compliance requirement found in the entire document. Each requirement stated clearly and completely. Nothing omitted. Organized by category for clarity.]
+
+# - [Requirement 1 with full details]
+# - [Requirement 2 with full details]
+# - [Requirement 3 with full details]
+# - [Continue for ALL requirements - typically 30-100+ items for comprehensive RFPs]
+
+# ============================================================
+# **FINAL PRE-SUBMISSION VERIFICATION**
+# ============================================================
+
+# Before submitting your extraction, answer these questions:
+
+# 1. Did you read the ENTIRE RFP document from first page to last page? □
+# 2. Did you check ALL appendices and attachments? □
+# 3. Did you extract information from tables and structured data? □
+# 4. Did you capture ALL dates mentioned anywhere in the document? □
+# 5. Did you capture ALL contact information from anywhere in the document? □
+# 6. Is Section 3 exhaustive (not just a sample of requirements)? □
+# 7. Did you preserve exact wording for all critical details? □
+# 8. Did you verify all numbers, dates, and names against the source? □
+# 9. Did you avoid adding ANY information not in the source? □
+# 10. Did you check that each section contains ONLY its designated content type? □
+
+# If any answer is NO, review the document again before finalizing.
+
+# ============================================================
+# **SOURCE RFP TEXT**
+# ============================================================
+# \"\"\"{rfp_text}\"\"\"
+
+# CRITICAL REMINDER: 
+# - You are EXTRACTING existing content, not creating new content.
+# - Every fact, date, name, number must come from the source text.
+# - Section 3 must be EXHAUSTIVE - this is where 70% of critical information lives.
+# - Missing a single deadline or requirement could disqualify a proposal.
+# - Your extraction must be so complete that someone could respond to this RFP using ONLY your output.
+# """
+
+#     system_prompt = (
+#         "You are a meticulous RFP extraction specialist with perfect attention to detail. "
+#         "Your extractions are comprehensive, accurate, and complete. You NEVER add information "
+#         "not present in the source document. You NEVER miss important details. You read entire "
+#         "documents systematically and extract every relevant piece of information. Your Section 3 "
+#         "extractions are especially thorough, capturing every single submission requirement. "
+#         "You work methodically through checklists to ensure nothing is overlooked."
+#     )
+
+#     return chat_model(
+#         model="gpt-4o-mini",
+#         system_prompt=system_prompt,
+#         user_prompt=user_prompt,
+#         temperature=0.1,
+#         max_tokens=4000  # Increased to handle comprehensive extractions
+#     )
+
+
 def extract_company_background_from_rfp(rfp_text: str) -> str:
     """
     Extracts 3 fully detailed sections from an RFP:
-    1. Purpose of the RFP (including Buyer Priorities & Win Themes)
+    1. Purpose of the RFP (including Scope of Work, Buyer Priorities & Win Themes)
     2. Company Background
     3. Submission Details & Requirements
     """
@@ -108,17 +673,17 @@ You are a senior RFP analyst with deep expertise in procurement, compliance, and
 Your task is to extract and reorganize information from the provided RFP text into **exactly three sections**.
 
 ============================================================
-**CRITICAL EXTRACTION RULES (DO NOT VIOLATE)**  
+**CRITICAL EXTRACTION RULES (DO NOT VIOLATE)**
 ============================================================
 
-**1. ZERO HALLUCINATIONS - EXTRACTION ONLY**  
+**1. ZERO HALLUCINATIONS - EXTRACTION ONLY**
 - You are EXTRACTING, not writing. Every word must come from the RFP text.
 - If information is not present in the RFP, write "No information available" for that element.
 - NEVER infer, assume, add context, or use external knowledge.
 - NEVER add examples, best practices, or general advice not in the RFP.
 - NEVER invent company names, dates, requirements, contact details, or any data not explicitly stated.
 
-**2. ABSOLUTE COMPLETENESS - MISS NOTHING**  
+**2. ABSOLUTE COMPLETENESS - MISS NOTHING**
 - Read the ENTIRE RFP document from beginning to end before extracting.
 - Scan ALL sections including: cover page, table of contents, main body, appendices, attachments, footnotes, headers, footers, sidebars, and exhibits.
 - Information is often scattered across multiple sections - systematically gather ALL occurrences.
@@ -130,7 +695,7 @@ Your task is to extract and reorganize information from the provided RFP text in
   * Appendices labeled "Required Forms" or "Submission Instructions"
   * Sections near the end of the document (often contain critical deadlines)
 
-**3. VERBATIM PRESERVATION WITH COMPLETE ACCURACY**  
+**3. VERBATIM PRESERVATION WITH COMPLETE ACCURACY**
 - Use the RFP's exact wording, terminology, and phrasing.
 - Preserve ALL technical terms, acronyms, and specific requirements exactly as written.
 - Copy ALL numbers, dates, times, addresses, names, phone numbers, emails, URLs EXACTLY as they appear.
@@ -139,56 +704,54 @@ Your task is to extract and reorganize information from the provided RFP text in
 - For requirements: preserve exact wording including "must," "shall," "should," "required," etc.
 - Only merge sentences when absolutely necessary for flow - never change meaning or lose detail.
 
-**4. STRICT SECTION BOUNDARIES**  
+**4. STRICT SECTION BOUNDARIES**
 - Purpose content ONLY in Section 1
-- Background content ONLY in Section 2  
+- Background content ONLY in Section 2
 - Submission/procedural content ONLY in Section 3
 - NO overlap between sections
 - NO duplication of information
 
-**5. SYSTEMATIC MULTI-PASS VERIFICATION**  
+============================================================
+**⚠️ SCOPE OF WORK DECOMPOSITION RULE — CRITICAL, NEVER VIOLATE**
+============================================================
 
-**First Pass - Initial Read:**
-- Read entire document once to understand structure and locate information
+When the RFP contains a clearly enumerated list of deliverables, responsibilities,
+scope items, or work areas — whether numbered (1, 2, 3...) or bulleted — you MUST:
 
-**Second Pass - Section-by-Section Extraction:**
-- Extract Section 1 content from entire document
-- Extract Section 2 content from entire document  
-- Extract Section 3 content from entire document
+- TREAT EACH ITEM AS A SEPARATE, INDEPENDENT ENTITY
+- NEVER merge, collapse, or summarize multiple scope items into one sentence or paragraph
+- Extract EVERY sub-detail, bullet, and sub-bullet for EACH item individually
+- Present each scope item with its own label using the EXACT name from the RFP
+- Preserve the original numbering from the RFP (e.g., "1.", "2.", "3.")
+- If sub-bullets exist under a scope item, include ALL of them under that item
 
-**Third Pass - Verification:**
-Before finalizing, verify each checklist:
+**⚠️ SCOPE SOURCE RESTRICTION — CRITICAL:**
+Extract scope items ONLY from the section explicitly labeled "Scope of Work," "Scope of Services,"
+"Deliverables," "Work Requirements," or a direct equivalent.
+DO NOT pull items from sections labeled "Priorities," "Goals," "Objectives," "Key Focus Areas,"
+"Other Priorities," "Background," or "Introduction" and present them as scope items.
+Those sections belong in the Purpose narrative — NOT in the Scope breakdown.
 
-□ Section 1 Checklist:
-  - Purpose statement captured
-  - Problem/need identified
-  - Goals and objectives listed
-  - Scope of work described
-  - Expected outcomes noted
-  
-□ Section 2 Checklist:
-  - Organization name(s) captured
-  - Location information included
-  - Organization type identified
-  - Size/scale information noted
-  - Mission/values extracted (if present)
-  
-□ Section 3 Checklist (MOST CRITICAL):
-  - ALL deadlines captured (proposal due, questions due, pre-bid meetings, etc.)
-  - ALL contact information extracted (name, title, phone, email for each person)
-  - Submission method clearly stated
-  - ALL required documents/forms listed
-  - ALL formatting requirements noted
-  - ALL eligibility criteria included
-  - ALL evaluation criteria captured with point values
-  - Special instructions or conditions noted
+Wrong behavior (DO NOT DO):
+Pulling "Represent diversity: BIPOC representation..." from an "Other Priorities" section
+and labeling it as a Scope Item.
 
-□ Final Accuracy Check:
-  - All dates match original exactly
-  - All numbers match original exactly
-  - All names match original exactly
-  - No content added that isn't in source
-  - No important details omitted
+Correct behavior:
+Only items explicitly listed under the RFP's own "Scope of Work" section appear as Scope Items.
+Priority/goal items appear only in the Purpose narrative or Buyer Priorities subsection.
+
+**Example of CORRECT scope extraction:**
+
+Scope Item 1: [Exact name from RFP]
+- [Exact sub-detail 1 verbatim]
+- [Exact sub-detail 2 verbatim]
+- [All remaining sub-details]
+
+Scope Item 2: [Exact name from RFP]
+- [Exact sub-detail 1 verbatim]
+- [All remaining sub-details]
+
+[Continue for EVERY scope item — never skip one]
 
 ============================================================
 **SECTION REQUIREMENTS**
@@ -208,17 +771,20 @@ Extract ALL content that explains WHY this RFP exists and WHAT is being procured
 - Statement of Need or Problem Statement
 - Purpose or Intent statements
 - Objectives or Goals sections
-- Scope of Work or Scope of Services
+- Scope of Work or Scope of Services (decomposed individually per the rule above)
 - Project Timeline or Phases (high-level)
 - Expected Deliverables or Outcomes
 - Strategic rationale or business case
 - Stakeholder information (who benefits, who is involved)
 - Funding source or budget context (ONLY when explaining purpose, not detailed budget)
 - Any narrative that explains the "why" behind the procurement
+- Key Focus Areas, Other Priorities, and similar sections
+  (these go in Purpose narrative and Buyer Priorities — NOT as Scope Items)
 
 **Search These Locations:**
 - First 10 pages of document
-- Any section titled: Purpose, Background, Introduction, Overview, Project Description, Scope, Need, Problem, Objectives
+- Any section titled: Purpose, Background, Introduction, Overview, Project Description,
+  Scope, Need, Problem, Objectives, Key Focus Areas, Priorities
 - Preamble or cover letter from issuing organization
 - Executive summary
 
@@ -237,15 +803,16 @@ Extract ALL content that explains WHY this RFP exists and WHAT is being procured
 
 **Then add these subsections:**
 
-**Buyer Priorities & Win Themes:**  
+**Buyer Priorities & Win Themes:**
 
-Extract 3-10 bullet points that reveal what the buyer values most (or fewer if insufficient data).
+Extract 3-10 bullet points that reveal what the buyer values most.
 
 **Where to Search:**
 - Evaluation criteria sections (look for high-point items)
 - Sections with words like: "critical," "essential," "priority," "key," "must-have," "required"
 - Repeated themes mentioned 3+ times in the document
 - Mission/values statements from the issuing organization
+- Key Focus Areas, Other Priorities sections
 - Any section describing ideal vendor characteristics
 - Scoring rubrics or rating scales
 
@@ -258,42 +825,47 @@ Extract 3-10 bullet points that reveal what the buyer values most (or fewer if i
 - Themes around: quality, innovation, cost, experience, approach, collaboration, etc.
 
 **Format as:**
-- Clear, concise statements of buyer priorities
-- Use RFP's language but format as actionable priorities
-- Example: "Demonstrated experience with [specific technology mentioned in RFP]"
-- Example: "Commitment to [specific value the buyer emphasized]"
+- Clear, concise statements using RFP's language
 
 **If none found:** "No buyer priorities or win themes identified."
 
 ---
 
-**Key Phrases to Echo in Responses:**  
+**Key Phrases to Echo in Responses:**
 
 Extract 3-15 short verbatim quotes (5-30 words each) that reveal the buyer's voice, values, and expectations.
-
-**Where to Search:**
-- Mission statement sections
-- Organizational values or principles
-- Evaluation criteria descriptions
-- Scope of work narratives
-- Any section where the issuing organization describes their work, culture, or approach
-- Introduction or welcome letters
-- Background sections about the organization
-
-**What to Look For:**
-- How they describe their own work (e.g., "we take a methodical approach")
-- What they value (e.g., "innovation and collaboration are essential")
-- How they want vendors to work (e.g., "must demonstrate flexibility")
-- Their organizational culture (e.g., "we prioritize community engagement")
-- Their expectations (e.g., "deliverables must be evidence-based")
 
 **Format as:**
 - Each phrase in quotation marks
 - Keep quotes 5-30 words maximum
 - Only use EXACT quotes from the RFP
-- Include attribution if from a specific section (e.g., "From Mission Statement: '...'")
+- Include attribution if from a specific section
 
 **If none found:** "No key phrases identified."
+
+---
+
+**⚠️ EVALUATION CRITERIA EXTRACTION FOR DOWNSTREAM USE:**
+
+At the end of Section 1, add a clearly labeled sub-section:
+
+**Evaluation Criteria (Raw Extraction for Analysis):**
+
+List every evaluation criterion exactly as written, with its point value or weight.
+This is critical data used for strategic analysis downstream.
+Format:
+- [Criterion name exactly as written] — [point value or weight]
+- [Continue for ALL criteria]
+
+If no formal scoring exists, list the strongest implied priorities verbatim from the RFP.
+
+**Mandatory Language Flags:**
+
+List every sentence or clause that uses the words "must," "shall," "required," or "mandatory."
+These are compliance triggers.
+Format:
+- "[Exact sentence using must/shall/required/mandatory]"
+- [Continue for ALL instances found in the document]
 
 ============================================================
 
@@ -305,83 +877,35 @@ Extract EVERY detail about the organization issuing the RFP.
 
 **Must Include All Available Information On:**
 
-**Identity & Structure:**
 - Full legal name of organization
 - Common name, abbreviations, or acronyms used
 - Organization type (public sector, private company, nonprofit, government agency, etc.)
 - Parent organization or governing body (if applicable)
 - Organizational structure or hierarchy
-
-**Location & Geography:**
 - Headquarters address (full address if provided)
 - Branch locations, satellite offices, or service areas
 - Geographic regions served
-- Counties, cities, or jurisdictions covered
-
-**History & Development:**
 - Founding date or year established
 - Key milestones in organizational history
-- Historical context or evolution
-- Previous names or organizational changes
-
-**Mission & Values:**
 - Mission statement (full text if provided)
 - Vision statement
 - Core values or guiding principles
 - Strategic priorities or focus areas
-- Organizational mandates or charter
-
-**Size & Scale:**
 - Number of employees or staff count
 - Annual budget or revenue (if mentioned)
 - Number of facilities or locations
-- Service capacity or volume metrics
-- Client/customer base size
-
-**Operations:**
 - Core programs or service lines
 - Departments, divisions, or units
-- Key operational areas or functions
-- Service delivery model
 - Population or community served
-
-**Governance & Leadership:**
 - Board structure or governing body
-- Leadership positions mentioned
-- Key executives or administrators
-- Advisory committees or councils
-
-**Partnerships & Affiliations:**
 - Partner organizations or collaborators
 - Professional associations or memberships
-- Network affiliations
-- Industry certifications or accreditations
-
-**Recognition & Standing:**
 - Awards or recognition received
-- Certifications or accreditations held
-- Rankings or ratings
-- Notable achievements
-
-**Strategic Context:**
 - Current strategic initiatives
-- Organizational priorities or goals
-- Recent developments or changes
-- Future plans or direction
 - DEI (Diversity, Equity, Inclusion) commitments or policies
 
-**Search These Locations Thoroughly:**
-- "About Us" sections
-- "Organizational Background" sections
-- Cover letters or introductory narratives
-- Appendices about the organization
-- Headers, footers, or letterhead information
-- Organizational charts or diagrams
-- Any descriptive narrative about the issuing entity
-- References scattered throughout the document
-
 **Must Exclude From Section 2:**
-- Project scope details (that belongs in Section 1)
+- Project scope details (belongs in Section 1)
 - Submission requirements or procedures
 - Vendor qualifications needed
 - Evaluation or selection criteria
@@ -395,17 +919,6 @@ Extract EVERY detail about the organization issuing the RFP.
 
 **THIS IS THE MOST CRITICAL SECTION - ABSOLUTE COMPLETENESS REQUIRED**
 
-**SEARCH STRATEGY:**
-You MUST search the ENTIRE document for submission-related information. It may be in:
-- Dedicated "Submission Requirements" sections
-- "Instructions to Bidders" sections
-- Appendices or exhibits
-- Fine print at the end of sections
-- Footnotes or sidebars
-- Mixed into other sections
-- Tables or checklists
-- Cover pages or final pages
-
 **Extract EVERY SINGLE:**
 
 **DEADLINES & CRITICAL DATES:**
@@ -417,146 +930,102 @@ You MUST search the ENTIRE document for submission-related information. It may b
 - Award notification date
 - Contract start date
 - Any other dates or milestones
-(For each date: include day of week if mentioned, exact time, AM/PM, timezone)
 
 **CONTACT INFORMATION (Extract ALL):**
 For each contact person, capture:
-- Full name
-- Title or position
-- Department or division
-- Phone number (with extension if provided)
-- Email address
-- Physical address (if provided)
-- Mailing address (if different)
-- Website or portal URL
-- Fax number (if provided)
-- Preferred contact method
-- Hours of availability for questions
+- Full name, Title or position, Department or division
+- Phone number, Email address, Physical address
+- Website or portal URL, Fax number
+- Preferred contact method, Hours of availability
 
 **SUBMISSION LOGISTICS:**
 - HOW to submit (email, online portal, physical delivery, courier, etc.)
 - WHERE to submit (physical address, email address, portal URL)
 - WHEN to submit (exact date and time)
 - Number of copies required (originals vs copies, physical vs digital)
-- File formats accepted (PDF, Word, Excel, etc.)
+- File formats accepted
 - File size limitations
 - File naming conventions required
-- Email subject line requirements (if email submission)
-- Packaging requirements (sealed envelope, specific labeling, etc.)
+- Email subject line requirements
+- Packaging requirements
 - Delivery confirmation requirements
 - Late submission policy
 
 **REQUIRED DOCUMENTS & FORMS (List ALL by name):**
 - Bid forms or proposal forms (with form numbers)
-- Certifications required (with specific names)
-- Insurance certificates (types and coverage amounts)
-- Financial statements (which years, audited vs unaudited)
-- Tax documents (W-9, exemption certificates, etc.)
-- References or past performance (how many, what format)
-- Resumes or staff qualifications (for which positions)
-- Work samples or portfolio examples (how many, what type)
+- Certifications required
+- Insurance certificates
+- Financial statements
+- Tax documents
+- References or past performance
+- Resumes or staff qualifications
+- Work samples or portfolio examples
 - Affidavits or sworn statements
-- Bond forms (bid bond, performance bond, payment bond)
+- Bond forms
 - Registration certificates or licenses
 - Appendices or attachments to complete
-- Any other forms mentioned by name or number
 
 **PROPOSAL CONTENT REQUIREMENTS:**
-- Required sections or narratives (list each)
-- Executive summary requirements (length, content)
+- Required sections or narratives
+- Executive summary requirements
 - Technical proposal requirements
-- Cost proposal requirements (separate vs combined)
+- Cost proposal requirements
 - Page limits (overall and by section)
 - Word count limits
-- Formatting specifications:
-  * Font type and size
-  * Margin requirements
-  * Line spacing
-  * Paper size
-  * Single vs double-sided
-  * Binding requirements
+- Formatting specifications (font, margin, spacing, paper size, binding)
 - Table of contents requirements
 - Page numbering requirements
 - Section organization or order
 - Cover page requirements
-- Appendix limitations
 
 **ELIGIBILITY & COMPLIANCE:**
-- Vendor registration requirements (where to register, by when)
+- Vendor registration requirements
 - Business licensing requirements
 - Professional certifications required
-- Insurance requirements (types: general liability, professional liability, workers comp, etc.)
-  * Coverage amounts for each type
-  * Certificate holder information
-- Bonding requirements (bid bond, performance bond amounts)
+- Insurance requirements (types and coverage amounts)
+- Bonding requirements
 - Minimum years in business
 - Minimum project experience
 - Geographic restrictions or preferences
-- Size standards (small business, MBE/WBE, etc.)
 - Conflict of interest disclosures
 - Debarment certifications
-- Background check requirements
-- Subcontractor disclosure rules (who, when, how to disclose)
-- Joint venture requirements
-- Minimum qualifications checklist
-- Disqualification criteria
-- Mandatory requirements vs preferences
+- Subcontractor disclosure rules
 
 **EVALUATION & SELECTION:**
-- Evaluation criteria (list each criterion)
-- Point allocations or weights for each criterion
+- Evaluation criteria (list each criterion with point value)
 - Total points possible
 - Minimum score to advance
-- Scoring methodology or rubric
+- Scoring methodology
 - Evaluation phases or stages
-- Selection committee composition
 - Selection process timeline
-- Award decision factors
-- Tie-breaking procedures
-- Negotiation process (if applicable)
-- Best and Final Offer (BAFO) process
 - Interview or presentation requirements
 - Protest procedures or appeal rights
 - Award notification method
 
 **QUESTIONS & CLARIFICATIONS:**
-- How to submit questions (email, portal, written)
-- Question deadline (date and time)
-- Where questions will be answered (addendum, website, email)
-- Format for questions
-- Anonymous vs attributed questions
+- How to submit questions
+- Question deadline
+- Where questions will be answered
 - Addendum release schedule
-- How addenda will be distributed
 
 **SPECIAL CONDITIONS & REQUIREMENTS:**
 - Confidentiality or non-disclosure requirements
-- Proprietary information marking procedures
 - Public records disclosure notices
-- Freedom of Information Act (FOIA) notices
 - Contract terms preview or sample contract
-- Payment terms (net 30, progress payments, etc.)
-- Invoice requirements
+- Payment terms
 - Performance requirements or KPIs
-- Reporting obligations (what, when, to whom)
-- Site visit requirements (mandatory vs optional)
-- Attendance requirements (pre-bid conference, etc.)
+- Reporting obligations
+- Site visit requirements
 - Sustainability or environmental requirements
 - Local hiring or preference requirements
-- Prevailing wage requirements
 - Equal opportunity or affirmative action requirements
-- Accessibility requirements (ADA, Section 508, etc.)
 - Data security or privacy requirements
-- Background check or clearance requirements
-- Drug testing requirements
 - Any other special terms, conditions, or requirements
 
 **BUDGET & PRICING:**
-(Only include if these are submission requirements, not project budget)
 - Cost proposal format required
 - Pricing sheet or template to use
 - What cost elements to include/exclude
-- Separate pricing for optional services
-- Unit pricing requirements
 - Not-to-exceed amounts or budget caps
 
 **Format Requirements for Section 3:**
@@ -564,78 +1033,121 @@ For each contact person, capture:
 - Each bullet should be a complete, clear requirement
 - Use exact wording from RFP whenever possible
 - Group related items together for clarity
-- Include ALL details for each item (don't summarize)
+- Include ALL details for each item
 - If a requirement has multiple parts, include all parts
-- If unclear, include the exact RFP language
-
-**Example Format:**
-- Proposal due date: [exact date, time, timezone as stated in RFP]
-- Primary contact: [Full Name, Title, Phone, Email as stated]
-- Submission method: [exact method as described in RFP]
-- Required documents: [list each by exact name]
-- Insurance required: [exact types and amounts as stated]
-- Evaluation criteria: [each criterion with point value]
-- [Continue for ALL requirements found]
-
-**If any requirement is unclear or ambiguous:** Include it anyway using the exact RFP language.
 
 **If no details found:** "No submission details or requirements available."
+
+============================================================
+**SYSTEMATIC MULTI-PASS VERIFICATION**
+============================================================
+
+**First Pass - Initial Read:**
+Read entire document once to understand structure and locate information.
+
+**Second Pass - Section-by-Section Extraction:**
+Extract each section's content from the entire document.
+
+**Third Pass - Verification:**
+
+□ Section 1 Checklist:
+  - Purpose statement captured
+  - Problem/need identified
+  - Goals and objectives listed
+  - Scope of Work items listed INDIVIDUALLY — each one separate with all sub-details
+  - Scope items sourced ONLY from the Scope of Work section (not from Priorities/Goals)
+  - Buyer priorities listed
+  - Key phrases extracted
+  - Evaluation criteria extracted (raw, with point values)
+  - Mandatory language flags extracted
+
+□ Section 2 Checklist:
+  - Organization name(s) captured
+  - Location information included
+  - Organization type identified
+  - Size/scale information noted
+  - Mission/values extracted (if present)
+
+□ Section 3 Checklist (MOST CRITICAL):
+  - ALL deadlines captured
+  - ALL contact information extracted
+  - Submission method clearly stated
+  - ALL required documents/forms listed
+  - ALL formatting requirements noted
+  - ALL eligibility criteria included
+  - ALL evaluation criteria captured with point values
+  - Special instructions or conditions noted
+
+□ Final Accuracy Check:
+  - All dates match original exactly
+  - All numbers match original exactly
+  - All names match original exactly
+  - No content added that isn't in source
+  - No important details omitted
+  - Scope items not invented or pulled from wrong sections
 
 ============================================================
 **OUTPUT FORMAT (STRICT)**
 ============================================================
 
-Section 1: Purpose of the RFP  
-[Comprehensive, detailed extraction of why this RFP was issued and what is being procured. Written in flowing paragraphs using the RFP's own language. Include ALL relevant context from the entire document.]
+Section 1: Purpose of the RFP
+[Comprehensive, detailed extraction of why this RFP was issued and what is being procured.
+Written in flowing paragraphs using the RFP's own language. Include ALL relevant context
+from the entire document. Include Key Focus Areas and Other Priorities in the narrative.]
 
-Buyer Priorities & Win Themes:  
-- [Priority 1 - based on RFP text with specific examples]  
-- [Priority 2 - based on RFP text with specific examples]  
+Scope of Work — Individual Breakdown:
+
+Scope Item 1: [Exact name from RFP]
+- [Exact sub-detail verbatim]
+- [All remaining sub-details]
+
+Scope Item 2: [Exact name from RFP]
+- [Exact sub-detail verbatim]
+- [All remaining sub-details]
+
+[Continue for ALL scope items — never merge, never skip, never pull from wrong section]
+
+Buyer Priorities & Win Themes:
+- [Priority 1 - based on RFP text with specific examples]
+- [Priority 2 - based on RFP text with specific examples]
 - [Continue for all priorities identified, minimum 3, maximum 10]
 
-Key Phrases to Echo in Responses:  
-- "[Exact verbatim quote 1 from RFP]"  
-- "[Exact verbatim quote 2 from RFP]"  
+Key Phrases to Echo in Responses:
+- "[Exact verbatim quote 1 from RFP]"
+- "[Exact verbatim quote 2 from RFP]"
 - [Continue for all key phrases found, minimum 3, maximum 15]
 
-Section 2: Company Background  
-[Comprehensive, detailed extraction of ALL information about the issuing organization. Written in flowing paragraphs. Cover every aspect listed in the requirements. Leave no detail unmentioned.]
+Evaluation Criteria (Raw Extraction for Analysis):
+- [Criterion 1 exactly as written] — [point value]
+- [Criterion 2 exactly as written] — [point value]
+- [Continue for ALL criteria]
 
-Section 3: Submission Details & Requirements  
-[Exhaustive bullet list of EVERY procedural, administrative, and compliance requirement found in the entire document. Each requirement stated clearly and completely. Nothing omitted. Organized by category for clarity.]
+Mandatory Language Flags:
+- "[Exact sentence containing must/shall/required/mandatory]"
+- [Continue for ALL instances]
+
+Section 2: Company Background
+[Comprehensive, detailed extraction of ALL information about the issuing organization.
+Written in flowing paragraphs. Cover every aspect listed in the requirements.]
+
+Section 3: Submission Details & Requirements
+[Exhaustive bullet list of EVERY procedural, administrative, and compliance requirement
+found in the entire document. Each requirement stated clearly and completely.
+Nothing omitted. Organized by category for clarity.]
 
 - [Requirement 1 with full details]
 - [Requirement 2 with full details]
-- [Requirement 3 with full details]
-- [Continue for ALL requirements - typically 30-100+ items for comprehensive RFPs]
-
-============================================================
-**FINAL PRE-SUBMISSION VERIFICATION**
-============================================================
-
-Before submitting your extraction, answer these questions:
-
-1. Did you read the ENTIRE RFP document from first page to last page? □
-2. Did you check ALL appendices and attachments? □
-3. Did you extract information from tables and structured data? □
-4. Did you capture ALL dates mentioned anywhere in the document? □
-5. Did you capture ALL contact information from anywhere in the document? □
-6. Is Section 3 exhaustive (not just a sample of requirements)? □
-7. Did you preserve exact wording for all critical details? □
-8. Did you verify all numbers, dates, and names against the source? □
-9. Did you avoid adding ANY information not in the source? □
-10. Did you check that each section contains ONLY its designated content type? □
-
-If any answer is NO, review the document again before finalizing.
+- [Continue for ALL requirements — typically 30-100+ items for comprehensive RFPs]
 
 ============================================================
 **SOURCE RFP TEXT**
 ============================================================
 \"\"\"{rfp_text}\"\"\"
 
-CRITICAL REMINDER: 
+CRITICAL REMINDER:
 - You are EXTRACTING existing content, not creating new content.
 - Every fact, date, name, number must come from the source text.
+- Scope Items must come ONLY from the RFP's Scope of Work section — not from Priorities or Goals.
 - Section 3 must be EXHAUSTIVE - this is where 70% of critical information lives.
 - Missing a single deadline or requirement could disqualify a proposal.
 - Your extraction must be so complete that someone could respond to this RFP using ONLY your output.
@@ -645,9 +1157,12 @@ CRITICAL REMINDER:
         "You are a meticulous RFP extraction specialist with perfect attention to detail. "
         "Your extractions are comprehensive, accurate, and complete. You NEVER add information "
         "not present in the source document. You NEVER miss important details. You read entire "
-        "documents systematically and extract every relevant piece of information. Your Section 3 "
-        "extractions are especially thorough, capturing every single submission requirement. "
-        "You work methodically through checklists to ensure nothing is overlooked."
+        "documents systematically and extract every relevant piece of information. "
+        "You ALWAYS decompose Scope of Work items individually — never merging them — and you "
+        "ONLY pull scope items from the section explicitly labeled Scope of Work, never from "
+        "Priorities, Goals, or Focus Areas sections. "
+        "Your Section 3 extractions are especially thorough, capturing every single submission "
+        "requirement. You work methodically through checklists to ensure nothing is overlooked."
     )
 
     return chat_model(
@@ -655,15 +1170,215 @@ CRITICAL REMINDER:
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.1,
-        max_tokens=4000  # Increased to handle comprehensive extractions
+        max_tokens=4500
     )
 
+# def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str:
+#     """
+#     Combine RFP company description and web search snippets into a
+#     structured, executive-level analysis with 3 fixed sections.
+    
+#     """
+
+#     combined_snippets = "\n".join(all_snippets)
+
+#     user_prompt = f"""
+# You are a senior strategy consultant preparing a formal RFP analysis brief.
+
+# ============================================================
+# **CRITICAL RULES - ZERO VIOLATIONS ALLOWED**
+# ============================================================
+
+# **1. SOURCE FIDELITY - NO ADDITIONS**
+# - Use ONLY information from the RFP text and web snippets provided
+# - NEVER add information from general knowledge
+# - NEVER add examples, statistics, or facts not in the sources
+# - If information is missing, explicitly state: "No information available in provided sources"
+# - Every factual claim must be traceable to the inputs
+
+# **2. COMPLETENESS - MISS NOTHING**
+# - Extract ALL relevant information from both RFP and web snippets
+# - Information may be scattered - consolidate comprehensively
+# - Don't summarize away important details - include ALL sub-details, bullets, and structured elements verbatim where possible
+# - Check both sources thoroughly before finalizing, including forms, templates, appendices, footnotes, and any structured data like bid contracts
+# - For universal applicability: Treat all RFP structures (e.g., forms, tables, scattered notes) as critical - extract every detail regardless of format
+
+# **3. ACCURACY VERIFICATION**
+# - Double-check all numbers, dates, names against sources
+# - Preserve exact terminology from the RFP
+# - When RFP and web sources conflict, note: "RFP states [X], while web sources indicate [Y]"
+# - Never merge conflicting information into a single statement
+
+# **4. SECTION DISCIPLINE**
+# - Each section has strict boundaries - respect them
+# - No submission details in Sections 1 or 2
+# - No background in Sections 1 or 3
+# - No purpose narrative in Sections 2 or 3
+
+# ============================================================
+# **SECTION-SPECIFIC INSTRUCTIONS**
+# ============================================================
+
+# ### Section 1: Purpose of the RFP
+
+# **Content to Include:**
+# - Why the RFP was issued (explicit purpose statements)
+# - Problems being solved or needs being addressed
+# - Strategic goals and desired outcomes
+# - Project scope and deliverables expected - include ALL details from Scope of Work sections, including sub-bullets, phases, and specific requirements verbatim
+# - Expected impact or benefits
+# - Context that explains the procurement decision
+# - Buyer Priorities & Win Themes: Extract and list ALL (up to 10) as bullets, including any inferred from evaluation criteria, repeated themes, or requirements
+# - Key Phrases to Echo in Responses: Extract and list ALL (up to 15) verbatim quotes as bullets
+
+# **Content to EXCLUDE:**
+# - Submission deadlines, contacts, or procedures
+# - Proposal formatting requirements
+# - Company background information
+# - How to submit or what forms are needed
+
+# **Format:** 
+# Write the main purpose as flowing paragraphs with blank lines between them.
+# Then, add the Buyer Priorities & Win Themes and Key Phrases subsections as bullet lists.
+# Be comprehensive - do not condense; include every sub-detail from the source.
+
+# ### Section 2: Company Background
+
+# **Primary Source:** RFP company text
+# **Secondary Source:** Web snippets (only verified, relevant details)
+
+# **Must Include All Available Information On:**
+# - Full legal name and any common names/abbreviations
+# - Organization type and structure
+# - Founding year and history
+# - Headquarters and locations
+# - Ownership structure (public/private/government)
+# - Size (employees, budget, facilities)
+# - Core products, services, or offerings
+# - Industries and markets served
+# - Mission, vision, values if stated
+# - Major clients or partners
+# - Strategic initiatives or focus areas
+# - Awards, certifications, recognition
+# - Market position or competitive standing
+# - Recent developments or changes
+
+# **Web Snippets Usage:**
+# - Use web data to ENHANCE, not replace, RFP information
+# - Add web information if it appears in at least one snippet and is relevant/complements RFP data - note the source (e.g., "From web sources: [detail]")
+# - If unverified or from a single source, still include but note: "Unverified from single web source: [detail]"
+# - If web data conflicts with RFP, note the discrepancy
+# - For universal RFPs: If RFP lacks background, use web snippets to build a complete profile where possible
+
+# **Format:**
+# Write as comprehensive paragraphs with blank lines between them.
+# Create a complete company profile.
+
+# ### Section 3: Submission Details & Requirements
+
+# **THIS IS THE MOST CRITICAL SECTION - MISS NOTHING**
+
+# **Extract EVERY SINGLE:**
+# - Deadline (proposal due, questions due, any other dates)
+# - Contact (names, titles, emails, phones, addresses, hours of availability)
+# - Submission method (email, portal, physical, courier)
+# - Required format (file type, number of copies, binding, labeling)
+# - Mandatory form or document by name - include ALL sub-details and fields from forms/templates (e.g., bid contract fields like bidder type, options, signatures)
+# - Eligibility requirement or prerequisite
+# - Proposal content requirement (sections, page limits, formatting) - include ALL sub-requirements for each section
+# - Evaluation criterion or scoring factor - include weights and descriptions
+# - Special instruction or condition (e.g., cancellation policies, payment terms, tax exemptions)
+# - Compliance requirement
+# - Any other procedural notes, including from forms, fine print, or scattered sections
+
+# **Search thoroughly:**
+# - Main submission sections
+# - Fine print and footnotes
+# - Appendices about submission
+# - Scattered procedural notes throughout RFP, including bid forms and contracts
+# - Integrate relevant web snippets (e.g., updated deadlines from official sites) and note: "From web sources: [detail]"
+
+# **Format Requirements:**
+# - Present as a bullet list
+# - Each bullet should be a complete requirement, using exact wording from RFP when possible
+# - Group related items for clarity (e.g., sub-bullets for form fields)
+# - Be exhaustive - include every detail, aiming for 30-100+ items if present in complex RFPs
+# - If a requirement has multiple parts, use sub-bullets
+
+# **If any requirement is unclear:** Include it anyway with the exact RFP language
+
+# ============================================================
+# **OUTPUT FORMAT**
+# ============================================================
+
+# **Section 1: Purpose of the RFP**
+# [Comprehensive explanation of why this RFP exists, what it aims to achieve, and what is being procured. Written in flowing paragraphs. Include ALL scope details.]
+
+# Buyer Priorities & Win Themes:  
+# - [Priority 1 - based on RFP text with specific examples]  
+# - [Priority 2 - based on RFP text with specific examples]  
+# - [Continue for all priorities identified, minimum 3, maximum 10]
+
+# Key Phrases to Echo in Responses:  
+# - "[Exact verbatim quote 1 from RFP]"  
+# - "[Exact verbatim quote 2 from RFP]"  
+# - [Continue for all key phrases found, minimum 3, maximum 15]
+
+# **Section 2: Company Background**
+# [Complete company profile combining RFP content and verified web data. Covers organization name, type, size, history, offerings, markets, strategic direction, and market position. Written in flowing paragraphs.]
+
+# **Section 3: Submission Details & Requirements**
+# [Exhaustive bullet list of every procedural, administrative, and compliance requirement. Each requirement clearly stated.]
+
+# - [Requirement 1]
+# - [Requirement 2]
+# - [Requirement 3]
+# [... continue for ALL requirements found]
+
+# ============================================================
+# **FINAL VERIFICATION CHECKLIST**
+# ============================================================
+
+# Before submitting, verify:
+# - [ ] No information added beyond the sources
+# - [ ] All important details from both RFP and web included, including all sub-details and forms
+# - [ ] All dates, numbers, names match sources exactly
+# - [ ] Conflicting information is noted, not merged
+# - [ ] Section 3 is exhaustive (every submission detail included)
+# - [ ] Plain text formatting (no markdown bold/asterisks except in output headers)
+# - [ ] Blank lines between paragraphs in Sections 1 and 2
+# - [ ] Universal handling: All RFP elements (forms, scattered info) extracted
+
+# ============================================================
+# **SOURCE MATERIALS**
+# ============================================================
+
+# RFP Company Description:
+# \"\"\"{rfp_company_text}\"\"\"
+
+# Web Search Snippets:
+# \"\"\"{combined_snippets}\"\"\"
+# """
+
+#     system_prompt = (
+#         "You are a meticulous RFP analyst who produces structured three-section summaries. "
+#         "You extract and organize information with perfect accuracy, never adding content not in the sources. "
+#         "You ensure Section 3 captures every single submission requirement without exception. "
+#         "Your output is comprehensive, accurate, and properly formatted for any RFP document."
+#     )
+
+#     return chat_model(
+#         model="gpt-4o-mini",
+#         system_prompt=system_prompt,
+#         user_prompt=user_prompt,
+#         temperature=0.5,  # Increased for better synthesis without hallucinations
+#         max_tokens=4000   # Increased to handle larger RFPs
+#     )
 
 def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str:
     """
     Combine RFP company description and web search snippets into a
-    structured, executive-level analysis with 3 fixed sections.
-    
+    structured, executive-level analysis with 4 fixed sections.
     """
 
     combined_snippets = "\n".join(all_snippets)
@@ -686,8 +1401,7 @@ You are a senior strategy consultant preparing a formal RFP analysis brief.
 - Extract ALL relevant information from both RFP and web snippets
 - Information may be scattered - consolidate comprehensively
 - Don't summarize away important details - include ALL sub-details, bullets, and structured elements verbatim where possible
-- Check both sources thoroughly before finalizing, including forms, templates, appendices, footnotes, and any structured data like bid contracts
-- For universal applicability: Treat all RFP structures (e.g., forms, tables, scattered notes) as critical - extract every detail regardless of format
+- Check both sources thoroughly before finalizing, including forms, templates, appendices, footnotes, and any structured data
 
 **3. ACCURACY VERIFICATION**
 - Double-check all numbers, dates, names against sources
@@ -700,6 +1414,33 @@ You are a senior strategy consultant preparing a formal RFP analysis brief.
 - No submission details in Sections 1 or 2
 - No background in Sections 1 or 3
 - No purpose narrative in Sections 2 or 3
+- Section 4 is analytical and strategic - it may reference content from all other sections
+
+============================================================
+** SCOPE OF WORK DECOMPOSITION RULE — CRITICAL, NEVER VIOLATE**
+============================================================
+
+When the RFP input contains a Scope of Work breakdown, you MUST:
+
+- PRESERVE each scope item as a SEPARATE, INDEPENDENT entity
+- NEVER merge, collapse, or summarize multiple scope items into one paragraph
+- Copy EVERY sub-detail for EACH item exactly as provided in the input
+- Present each scope item with its own label using the EXACT name from the RFP
+- Preserve the original numbering from the RFP
+
+**SCOPE SOURCE RESTRICTION — CRITICAL:**
+Scope Items must come ONLY from what is labeled as Scope of Work in the input.
+DO NOT take items from "Priorities," "Goals," "Key Focus Areas," "Other Priorities,"
+"Background," or "Introduction" sections and present them as Scope Items.
+Those items belong in the Purpose narrative or Buyer Priorities — never as Scope Items.
+
+Wrong (DO NOT DO):
+Inventing scope items or pulling from priorities/goals sections.
+
+Correct:
+Use ONLY the scope items present in the input's "Scope of Work" section.
+If the input has 9 scope items, output all 9. If it has 5, output all 5.
+Never add, remove, rename, or merge scope items.
 
 ============================================================
 **SECTION-SPECIFIC INSTRUCTIONS**
@@ -711,11 +1452,11 @@ You are a senior strategy consultant preparing a formal RFP analysis brief.
 - Why the RFP was issued (explicit purpose statements)
 - Problems being solved or needs being addressed
 - Strategic goals and desired outcomes
-- Project scope and deliverables expected - include ALL details from Scope of Work sections, including sub-bullets, phases, and specific requirements verbatim
+- Project scope and deliverables — presented individually per the Scope Decomposition Rule
 - Expected impact or benefits
 - Context that explains the procurement decision
-- Buyer Priorities & Win Themes: Extract and list ALL (up to 10) as bullets, including any inferred from evaluation criteria, repeated themes, or requirements
-- Key Phrases to Echo in Responses: Extract and list ALL (up to 15) verbatim quotes as bullets
+- Buyer Priorities & Win Themes (minimum 3, maximum 10 bullets)
+- Key Phrases to Echo in Responses (minimum 3, maximum 15 verbatim quotes)
 
 **Content to EXCLUDE:**
 - Submission deadlines, contacts, or procedures
@@ -723,10 +1464,12 @@ You are a senior strategy consultant preparing a formal RFP analysis brief.
 - Company background information
 - How to submit or what forms are needed
 
-**Format:** 
-Write the main purpose as flowing paragraphs with blank lines between them.
-Then, add the Buyer Priorities & Win Themes and Key Phrases subsections as bullet lists.
-Be comprehensive - do not condense; include every sub-detail from the source.
+**Format:**
+Write the main purpose as flowing paragraphs.
+Then present the Scope of Work items individually (one labeled block per item).
+Then add Buyer Priorities and Key Phrases as bullet lists.
+
+---
 
 ### Section 2: Company Background
 
@@ -734,11 +1477,11 @@ Be comprehensive - do not condense; include every sub-detail from the source.
 **Secondary Source:** Web snippets (only verified, relevant details)
 
 **Must Include All Available Information On:**
-- Full legal name and any common names/abbreviations
+- Full legal name and common names/abbreviations
 - Organization type and structure
 - Founding year and history
 - Headquarters and locations
-- Ownership structure (public/private/government)
+- Ownership structure
 - Size (employees, budget, facilities)
 - Core products, services, or offerings
 - Industries and markets served
@@ -751,75 +1494,220 @@ Be comprehensive - do not condense; include every sub-detail from the source.
 
 **Web Snippets Usage:**
 - Use web data to ENHANCE, not replace, RFP information
-- Add web information if it appears in at least one snippet and is relevant/complements RFP data - note the source (e.g., "From web sources: [detail]")
-- If unverified or from a single source, still include but note: "Unverified from single web source: [detail]"
-- If web data conflicts with RFP, note the discrepancy
-- For universal RFPs: If RFP lacks background, use web snippets to build a complete profile where possible
+- Note web-sourced additions: "From web sources: [detail]"
+- Note unverified single-source data: "Unverified from single web source: [detail]"
+- Note any conflicts: "RFP states [X], web sources indicate [Y]"
 
-**Format:**
-Write as comprehensive paragraphs with blank lines between them.
-Create a complete company profile.
+**Format:** Comprehensive paragraphs with blank lines between them.
+
+---
 
 ### Section 3: Submission Details & Requirements
 
-**THIS IS THE MOST CRITICAL SECTION - MISS NOTHING**
+**THIS IS THE MOST CRITICAL ADMINISTRATIVE SECTION - MISS NOTHING**
 
 **Extract EVERY SINGLE:**
-- Deadline (proposal due, questions due, any other dates)
-- Contact (names, titles, emails, phones, addresses, hours of availability)
-- Submission method (email, portal, physical, courier)
-- Required format (file type, number of copies, binding, labeling)
-- Mandatory form or document by name - include ALL sub-details and fields from forms/templates (e.g., bid contract fields like bidder type, options, signatures)
-- Eligibility requirement or prerequisite
-- Proposal content requirement (sections, page limits, formatting) - include ALL sub-requirements for each section
-- Evaluation criterion or scoring factor - include weights and descriptions
-- Special instruction or condition (e.g., cancellation policies, payment terms, tax exemptions)
-- Compliance requirement
-- Any other procedural notes, including from forms, fine print, or scattered sections
+- All deadlines (exact dates, times, timezones)
+- All contact information (names, titles, emails, phones, addresses)
+- Submission method and location
+- Required format (file type, copies, binding, labeling)
+- Every mandatory form or document by exact name
+- Every eligibility requirement or prerequisite
+- Every proposal content requirement (sections, page limits, formatting)
+- Every evaluation criterion with point value or weight
+- Every special instruction or condition
+- Every compliance requirement
+- All procedural notes including fine print, appendices, scattered notes
 
-**Search thoroughly:**
-- Main submission sections
-- Fine print and footnotes
-- Appendices about submission
-- Scattered procedural notes throughout RFP, including bid forms and contracts
-- Integrate relevant web snippets (e.g., updated deadlines from official sites) and note: "From web sources: [detail]"
+**Format:**
+- Exhaustive bullet list
+- Exact RFP wording wherever possible
+- Sub-bullets for multi-part requirements
+- Minimum 30 items for standard RFPs; 60-100+ for complex ones
 
-**Format Requirements:**
-- Present as a bullet list
-- Each bullet should be a complete requirement, using exact wording from RFP when possible
-- Group related items for clarity (e.g., sub-bullets for form fields)
-- Be exhaustive - include every detail, aiming for 30-100+ items if present in complex RFPs
-- If a requirement has multiple parts, use sub-bullets
+---
 
-**If any requirement is unclear:** Include it anyway with the exact RFP language
+### Section 4: What It Will Take to Win This Pitch
+
+**THIS IS A STRATEGIC ANALYSIS SECTION — NOT AN EXTRACTION SECTION**
+
+Analyze the RFP to give the responding agency a clear strategic roadmap for winning.
+Base every element on evidence from the input — no hallucinations, but sharp analytical
+conclusions are expected and required. Do not write generic advice that could apply to
+any RFP. Every point must be grounded in specific evidence from this RFP.
+
+**YOU MUST PRODUCE ALL SIX SUB-SECTIONS. DO NOT SKIP ANY.**
+
+---
+
+**4.1 Core Problem**
+What is the client's single biggest pain point or challenge driving this RFP?
+
+- Identify the central problem or strategic need driving the procurement
+- Look for: pain points, gaps, transitions, failures, pressing needs, governance pivots
+- Go beyond the surface — synthesize what the RFP reveals about WHY this is being issued NOW
+- Write 3-5 direct, specific sentences grounded in RFP evidence
+- Do NOT write generic statements like "they need better marketing" — be specific
+
+---
+
+**4.2 Key Evaluation Criteria**
+How are they scoring proposals and what do the weights reveal?
+
+- List every evaluation criterion with its EXACT point value or weight, ranked highest to lowest
+- After the list, write 3-4 sentences interpreting the scoring structure strategically:
+  What does it reveal about the client's true priorities?
+  Where should a proposal invest the most effort?
+  What would be a fatal mistake given the scoring?
+- If no formal scoring exists, identify the strongest implied priorities from repeated RFP language
+
+---
+
+**4.3 Mandatory Requirements**
+What is absolutely necessary to avoid disqualification?
+
+- List every hard requirement that would disqualify a non-compliant proposal
+- Use the mandatory language flags extracted from the RFP (must, shall, required, mandatory)
+- Include: required forms, signatures, deadlines, submission formats, certifications,
+  minimum qualifications, must-have documents
+- Distinguish clearly: mark "DISQUALIFYING" for hard cutoffs vs "PENALIZED" for point deductions
+- Format as a compliance checklist with exact RFP language
+
+---
+
+**4.4 Winning Differentiators**
+What would make one proposal meaningfully stand out?
+
+- Identify 5-7 specific differentiators tied directly to RFP evidence
+- These must be concrete — not generic advice like "be creative"
+- Look for: repeated themes, high-weighted criteria, emotionally loaded language,
+  underserved needs, specific capabilities they seem to be searching for,
+  things they mention with urgency or frequency
+- For each differentiator, provide:
+  * The differentiator (named clearly)
+  * WHY it matters — cite specific RFP language or scoring evidence
+  * HOW a proposal should demonstrate it
+- Format as a numbered list
+
+---
+
+**4.5 Risk Analysis**
+What are the top 3 risks for a responding agency on this project?
+
+For each risk:
+* Risk name (clearly stated in 3-7 words)
+* Evidence: specific RFP language or situation that signals this risk
+* Impact: what goes wrong if this risk materializes
+* Mitigation: how to address it proactively in the proposal
+
+Format: Risk 1, Risk 2, Risk 3 with labeled sub-bullets for each.
+
+---
+
+**4.6 Hot Buttons**
+What are the client's highest-priority themes?
+
+- Identify 4-6 hot button themes: topics, values, or outcomes the client mentions
+  with the most frequency, urgency, or emotional weight
+- These are the things that, if addressed powerfully, create the strongest connection
+  with evaluators
+- For each hot button:
+  * Name it (2-5 words)
+  * Evidence: quote or reference from the RFP showing why it's a hot button
+  * Proposal guidance: one specific sentence on how to address it to score maximum points
+- Format as a labeled list
+
+---
+
+**SECTION 4 FORMAT AND QUALITY STANDARDS:**
+- All 6 sub-sections present and clearly labeled 4.1 through 4.6
+- Every claim grounded in specific RFP evidence — not generic advice
+- Direct, confident, strategic language throughout
+- If evidence is limited, note what IS available and give the best analytical conclusion
 
 ============================================================
 **OUTPUT FORMAT**
 ============================================================
 
 **Section 1: Purpose of the RFP**
-[Comprehensive explanation of why this RFP exists, what it aims to achieve, and what is being procured. Written in flowing paragraphs. Include ALL scope details.]
+[Comprehensive explanation in flowing paragraphs.]
 
-Buyer Priorities & Win Themes:  
-- [Priority 1 - based on RFP text with specific examples]  
-- [Priority 2 - based on RFP text with specific examples]  
-- [Continue for all priorities identified, minimum 3, maximum 10]
+**Scope of Work — Individual Breakdown:**
 
-Key Phrases to Echo in Responses:  
-- "[Exact verbatim quote 1 from RFP]"  
-- "[Exact verbatim quote 2 from RFP]"  
-- [Continue for all key phrases found, minimum 3, maximum 15]
+**Scope Item 1: [Exact name from RFP]**
+- [Exact sub-detail verbatim]
+- [All sub-details]
+
+**Scope Item 2: [Exact name from RFP]**
+- [Exact sub-detail verbatim]
+- [All sub-details]
+
+[Continue for ALL scope items — never merge, never skip, never invent]
+
+**Buyer Priorities & Win Themes:**
+- [Priority 1]
+- [Priority 2]
+- [Continue, minimum 3, maximum 10]
+
+**Key Phrases to Echo in Responses:**
+- "[Exact verbatim quote 1]"
+- "[Exact verbatim quote 2]"
+- [Continue, minimum 3, maximum 15]
+
+---
 
 **Section 2: Company Background**
-[Complete company profile combining RFP content and verified web data. Covers organization name, type, size, history, offerings, markets, strategic direction, and market position. Written in flowing paragraphs.]
+[Complete company profile in flowing paragraphs.]
+
+---
 
 **Section 3: Submission Details & Requirements**
-[Exhaustive bullet list of every procedural, administrative, and compliance requirement. Each requirement clearly stated.]
+[Exhaustive bullet list.]
 
 - [Requirement 1]
 - [Requirement 2]
-- [Requirement 3]
-[... continue for ALL requirements found]
+- [Continue for ALL requirements]
+
+---
+
+**Section 4: What It Will Take to Win This Pitch**
+
+**4.1 Core Problem**
+[3-5 specific sentences grounded in this RFP's evidence]
+
+**4.2 Key Evaluation Criteria**
+[Ranked list with point values]
+[3-4 sentence strategic interpretation]
+
+**4.3 Mandatory Requirements**
+- [DISQUALIFYING] [Requirement verbatim]
+- [PENALIZED] [Requirement verbatim]
+- [Continue for all mandatory items]
+
+**4.4 Winning Differentiators**
+1. [Differentiator name] — Why it matters: [RFP evidence]. How to demonstrate: [specific guidance]
+2. [Continue for 5-7 items]
+
+**4.5 Risk Analysis**
+
+Risk 1: [Name]
+- Evidence: [Specific RFP language or situation]
+- Impact: [What goes wrong]
+- Mitigation: [How to address in proposal]
+
+Risk 2: [Name]
+- Evidence: [Specific RFP language or situation]
+- Impact: [What goes wrong]
+- Mitigation: [How to address in proposal]
+
+Risk 3: [Name]
+- Evidence: [Specific RFP language or situation]
+- Impact: [What goes wrong]
+- Mitigation: [How to address in proposal]
+
+**4.6 Hot Buttons**
+- [Hot Button Name]: Evidence: [RFP quote/reference]. Proposal guidance: [specific sentence]
+- [Continue for 4-6 items]
 
 ============================================================
 **FINAL VERIFICATION CHECKLIST**
@@ -827,13 +1715,18 @@ Key Phrases to Echo in Responses:
 
 Before submitting, verify:
 - [ ] No information added beyond the sources
-- [ ] All important details from both RFP and web included, including all sub-details and forms
+- [ ] All important details from both RFP and web included
 - [ ] All dates, numbers, names match sources exactly
 - [ ] Conflicting information is noted, not merged
+- [ ] Scope of Work items are individually listed — sourced ONLY from the Scope section
+- [ ] Scope item count matches what was in the input (no items added, removed, or merged)
 - [ ] Section 3 is exhaustive (every submission detail included)
-- [ ] Plain text formatting (no markdown bold/asterisks except in output headers)
-- [ ] Blank lines between paragraphs in Sections 1 and 2
-- [ ] Universal handling: All RFP elements (forms, scattered info) extracted
+- [ ] Section 4 contains ALL SIX sub-sections (4.1 through 4.6)
+- [ ] Section 4.3 distinguishes DISQUALIFYING from PENALIZED requirements
+- [ ] Section 4.4 has 5-7 differentiators with RFP evidence for each
+- [ ] Section 4.5 has exactly 3 risks with Evidence, Impact, and Mitigation for each
+- [ ] Section 4.6 has 4-6 hot buttons with RFP evidence and proposal guidance for each
+- [ ] No generic or boilerplate language in Section 4 — every claim tied to this specific RFP
 
 ============================================================
 **SOURCE MATERIALS**
@@ -847,9 +1740,16 @@ Web Search Snippets:
 """
 
     system_prompt = (
-        "You are a meticulous RFP analyst who produces structured three-section summaries. "
-        "You extract and organize information with perfect accuracy, never adding content not in the sources. "
+        "You are a meticulous senior RFP analyst and strategy consultant who produces "
+        "structured four-section analysis briefs. You extract and organize information with "
+        "perfect accuracy, never adding content not in the sources. "
+        "You ALWAYS preserve Scope of Work items exactly as provided in the input — "
+        "never merging, renaming, or inventing them, and never pulling items from Priorities "
+        "or Goals sections into the Scope breakdown. "
         "You ensure Section 3 captures every single submission requirement without exception. "
+        "You always produce all six sub-sections of Section 4 with sharp, specific, "
+        "evidence-based strategic analysis that gives a responding agency a clear roadmap "
+        "to win — never generic advice. "
         "Your output is comprehensive, accurate, and properly formatted for any RFP document."
     )
 
@@ -857,8 +1757,8 @@ Web Search Snippets:
         model="gpt-4o-mini",
         system_prompt=system_prompt,
         user_prompt=user_prompt,
-        temperature=0.5,  # Increased for better synthesis without hallucinations
-        max_tokens=4000   # Increased to handle larger RFPs
+        temperature=0.5,
+        max_tokens=5000
     )
 
 
@@ -1103,7 +2003,140 @@ def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
 #         raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
 
 
-def generate_answer_with_context(question: str, context: str, short_name: str) -> str:
+def _sanitize_short_name(short_name: str) -> str:
+    """
+    Validate that short_name is a human-readable client name.
+    If it looks like a UUID, hash, or alphanumeric ID, return a safe fallback.
+    This is the defensive layer — get_short_name() should already be clean,
+    but this ensures nothing bad ever reaches the LLM prompt.
+    """
+    if not short_name or not short_name.strip():
+        return "the City"
+
+    name = short_name.strip()
+
+    # Full UUID: 8-4-4-4-12 hex pattern
+    uuid_pattern = re.compile(
+        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}'
+        r'-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+        re.IGNORECASE
+    )
+
+    # Any string that is purely hex characters and dashes/underscores
+    # (catches partial UUIDs like "24ad8e0c" or "24Ad8E0C")
+    hex_only_pattern = re.compile(r'^[0-9a-fA-F\-_]{6,}$', re.IGNORECASE)
+
+    # Starts with digits and has no spaces (e.g. "24AA07", "2024RFP")
+    leading_digit_code = re.compile(r'^\d+[A-Za-z0-9\-_]*$')
+
+    if (uuid_pattern.match(name)
+            or hex_only_pattern.match(name)
+            or leading_digit_code.match(name)
+            or name.lower() == "the organization"):
+        return "the City"
+
+    return name
+
+# ????????????????????????????????????????????????????????????????????
+
+
+
+
+def generate_answer_with_context(
+    question: str,
+    context: str,
+    short_name: str,
+    existing_answer: str = None,
+    edit_instruction: str = None
+) -> str:
+    """
+    Generate a new proposal response OR apply a targeted edit to an existing one.
+
+    Parameters
+    ----------
+    question          : The RFP question being answered.
+    context           : RAG-retrieved context (RFP chunks + Keystone company data).
+    short_name        : Human-readable client name, e.g. "Duluth" or "McLean".
+                        Sanitized internally — UUID/hash values are rejected.
+    existing_answer   : Previously generated answer. Required for edit mode.
+    edit_instruction  : The specific change the user wants applied. Required for edit mode.
+                        Both existing_answer AND edit_instruction must be provided
+                        to activate edit mode. If either is missing, generate mode runs.
+    """
+
+    # Sanitize client name before it ever touches the prompt
+    short_name = _sanitize_short_name(short_name)
+
+    # Determine mode
+    is_edit_mode = bool(
+        existing_answer and existing_answer.strip()
+        and edit_instruction and edit_instruction.strip()
+    )
+
+    # ----------------------------------------------------------------
+    # Mode block — injected into the prompt
+    # ----------------------------------------------------------------
+    if is_edit_mode:
+        mode_block = f"""
+        ----------------------------------------------------------------
+
+        ### ⚠️ MODE: SURGICAL EDIT — READ BEFORE DOING ANYTHING ELSE
+
+        You are NOT generating a new response from scratch.
+        You are applying ONE SPECIFIC CHANGE to an existing response.
+
+        EXISTING RESPONSE (this is your base — preserve everything in it):
+        \"\"\"
+        {existing_answer}
+        \"\"\"
+
+        EDIT INSTRUCTION (apply ONLY this — nothing else):
+        \"\"\"
+        {edit_instruction}
+        \"\"\"
+
+        SURGICAL EDIT RULES (MANDATORY — NO EXCEPTIONS):
+        1. Treat the existing response as final and correct except for the
+           one thing the edit instruction targets.
+        2. Locate the exact sentence, phrase, or section the instruction refers to.
+           Apply the change there and ONLY there.
+        3. Every other sentence in the existing response must be copied
+           verbatim — unchanged word for word.
+        4. Do NOT rewrite, reorder, expand, or condense any part of the
+           response that was not explicitly mentioned in the edit instruction.
+        5. Do NOT change the tone, voice, or structure of unaffected sections.
+        6. Do NOT add new paragraphs, bullet points, or sections unless the
+           edit instruction explicitly asks for them.
+        7. If the edit instruction says "add to [sentence X]", find that
+           exact sentence and extend it — do not alter surrounding text.
+        8. If the edit instruction says "remove [element X]", delete only
+           that element — do not modify surrounding sentences.
+        9. If the edit instruction says "change [X] to [Y]", swap only
+           that element — do not touch anything else.
+        10. Return the COMPLETE updated response — not just the edited portion.
+        11. If the edit instruction is ambiguous, apply the most conservative
+            interpretation (smallest possible change).
+
+        WHAT YOU MUST NOT DO IN EDIT MODE:
+        - Do NOT produce a completely rewritten version of the answer.
+        - Do NOT use the edit as an excuse to improve other sentences.
+        - Do NOT silently remove content that wasn't mentioned.
+        - Do NOT change the client name, "we/our" voice, or formatting
+          in sections that were not part of the edit instruction.
+        """
+    else:
+        mode_block = """
+        ----------------------------------------------------------------
+
+        ### MODE: GENERATE NEW RESPONSE
+
+        Generate a complete, original response to the question below
+        using the provided context and all rules that follow.
+        """
+
+    # ----------------------------------------------------------------
+    # Full prompt
+    # ----------------------------------------------------------------
     prompt = f"""
         You are an expert proposal writer producing responses on behalf of an agency.
         You are not a neutral AI assistant.
@@ -1112,11 +2145,26 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
         Your job is to generate responses that reflect how this agency THINKS,
         TAKES POSITIONS, and COMMITS — not just how it sounds.
 
+        {mode_block}
+
+        ----------------------------------------------------------------
+
+        ### ⚠️ CLIENT NAMING RULE (MANDATORY — HIGHEST PRIORITY)
+
+        The client's name for this proposal is: "{short_name}"
+
+        - Refer to the issuer EXCLUSIVELY as "{short_name}" throughout the response.
+        - NEVER use a filename, document ID, UUID, or alphanumeric code as a name.
+        - NEVER use strings like "24Ad8E0C", "24AA07", "RFP-2024", or similar
+          identifiers as a client name. These are document reference numbers, not names.
+        - NEVER use "the client" as a substitute for the client's name.
+        - If you are unsure of the proper name, use "{short_name}" exactly as given.
+
         ----------------------------------------------------------------
 
         ###  AGENCY BEHAVIORAL AUTHORITY (MANDATORY)
 
-        The context may include statements that define the agency’s identity and posture.
+        The context may include statements that define the agency's identity and posture.
         These statements define WHAT YOU ARE ALLOWED TO DO intellectually.
 
         If present, interpret them as follows:
@@ -1154,7 +2202,7 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
         You MUST interpret the context as follows:
 
         - Any statements describing tone, voice, style, writing preferences,
-        brand personality, or do/don’t rules are **STYLE RULES**.
+        brand personality, or do/don't rules are **STYLE RULES**.
         These MUST be followed exactly and consistently.
 
         - Company details, services, experience, certifications,
@@ -1182,24 +2230,17 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
         ###  RFP USAGE RULE (MANDATORY)
 
         - Always anchor the response directly to the provided RFP context.
-        - Use the issuer’s exact requirements, constraints, and expectations.
+        - Use the issuer's exact requirements, constraints, and expectations.
         - Answers must be specific to what {short_name} is asking.
         - Do not produce generic or reusable boilerplate responses.
 
-        ----------------------------------------------------------------
-
-        ###  CLIENT NAMING RULE (MANDATORY)
-
-        - Refer to the issuer exclusively as "{short_name}".
-        - Never use “the client”.
-        - Never invent or substitute a different name.
 
         ----------------------------------------------------------------
 
         ###  VOICE & POINT OF VIEW (MANDATORY)
 
-        - Use “we” or “our”.
-        - Never use “I”.
+        - Use "we" or "our".
+        - Never use "I".
         - Never refer to the agency in the third person.
 
         ----------------------------------------------------------------
@@ -1225,14 +2266,14 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
 
         - Use ONLY information present in the provided context.
         - If required information is missing, write:
-        “We do not have enough information to provide that detail
-        based on the available context and company data.”
+        "We do not have enough information to provide that detail
+        based on the available context and company data."
 
         ----------------------------------------------------------------
 
         ###  TONE & STYLE (MANDATORY)
 
-        - Follow the agency’s voice as described in the context.
+        - Follow the agency's voice as described in the context.
         - Professional, concise, confident.
         - No vague marketing language.
         - No generic AI phrasing.
@@ -1250,7 +2291,8 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
         ###  FORMATTING RULES
 
         - Do not use bullet points unless explicitly required by the RFP.
-        - Do not reference “context” or “question” in the final response.
+        - Do not reference "context" or "question" in the final response.
+        - Plain text only — no markdown bold, headers, or asterisks.
 
         ----------------------------------------------------------------
 
@@ -1262,13 +2304,21 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
 
         Final Answer:
     """
+
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a professional RFP response specialist who strictly follows behavioral authority, factual accuracy, and style rules."
+                    "content": (
+                        "You are a professional RFP response specialist who strictly follows "
+                        "behavioral authority, factual accuracy, and style rules. "
+                        "You NEVER use document IDs, UUIDs, filenames, or alphanumeric reference "
+                        "codes as client names — only the human-readable name explicitly provided. "
+                        "In edit mode, you apply ONLY the requested change and preserve all other "
+                        "existing content word for word."
+                    )
                 },
                 {"role": "user", "content": prompt}
             ],
@@ -1279,6 +2329,184 @@ def generate_answer_with_context(question: str, context: str, short_name: str) -
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
+
+
+# def generate_answer_with_context(question: str, context: str, short_name: str) -> str:
+#     prompt = f"""
+#         You are an expert proposal writer producing responses on behalf of an agency.
+#         You are not a neutral AI assistant.
+#         You are acting as the agency itself.
+
+#         Your job is to generate responses that reflect how this agency THINKS,
+#         TAKES POSITIONS, and COMMITS — not just how it sounds.
+
+#         ----------------------------------------------------------------
+
+#         ###  AGENCY BEHAVIORAL AUTHORITY (MANDATORY)
+
+#         The context may include statements that define the agency’s identity and posture.
+#         These statements define WHAT YOU ARE ALLOWED TO DO intellectually.
+
+#         If present, interpret them as follows:
+
+#         - Challenger to client thinking:
+#         You are permitted and expected to question assumptions,
+#         reframe the problem, and introduce alternative interpretations.
+#         You must not default to agreement-driven or deferential writing.
+
+#         - Collaborator with client teams:
+#         Write from a shared-ownership posture.
+#         Use inclusive framing that signals partnership and joint accountability.
+
+#         - Operator responsible for execution:
+#         Anchor responses in delivery reality.
+#         Signal ownership, accountability, and operational responsibility.
+#         Do not over-distance yourself into purely advisory language.
+
+#         - Authority with a strong point of view:
+#         Make clear, decisive recommendations.
+#         Avoid hedging, equivocation, or overly neutral analysis.
+
+#         These are BEHAVIOR RULES, not tone preferences.
+#         They govern how you reason, what you assert, and what positions you take.
+
+#         ----------------------------------------------------------------
+
+#         ###  INTERPRETATION RULES (MANDATORY)
+
+#         The provided context may include:
+#         - Agency tone, voice, and writing preferences
+#         - Company facts, experience, and capabilities
+#         - RFP-specific instructions or references
+
+#         You MUST interpret the context as follows:
+
+#         - Any statements describing tone, voice, style, writing preferences,
+#         brand personality, or do/don’t rules are **STYLE RULES**.
+#         These MUST be followed exactly and consistently.
+
+#         - Company details, services, experience, certifications,
+#         and processes are **FACTUAL CONTENT**.
+#         Use these strictly for accuracy.
+
+#         - If there is any conflict:
+#         - STYLE RULES override wording and phrasing.
+#         - FACTUAL CONTENT overrides assumptions.
+#         - Never invent or infer missing facts.
+
+#         ----------------------------------------------------------------
+
+#         ###  KEYSTONE DATA RULE (MANDATORY)
+
+#         - If the context includes a section titled "Company Information",
+#         use it as the authoritative source for factual company details
+#         (e.g., legal name, certifications, scale, experience).
+
+#         - Incorporate this information naturally when relevant.
+#         - Do NOT hallucinate or supplement missing company information.
+
+#         ----------------------------------------------------------------
+
+#         ###  RFP USAGE RULE (MANDATORY)
+
+#         - Always anchor the response directly to the provided RFP context.
+#         - Use the issuer’s exact requirements, constraints, and expectations.
+#         - Answers must be specific to what {short_name} is asking.
+#         - Do not produce generic or reusable boilerplate responses.
+
+#         ----------------------------------------------------------------
+
+#         ###  CLIENT NAMING RULE (MANDATORY)
+
+#         - Refer to the issuer exclusively as "{short_name}".
+#         - Never use “the client”.
+#         - Never invent or substitute a different name.
+
+#         ----------------------------------------------------------------
+
+#         ###  VOICE & POINT OF VIEW (MANDATORY)
+
+#         - Use “we” or “our”.
+#         - Never use “I”.
+#         - Never refer to the agency in the third person.
+
+#         ----------------------------------------------------------------
+
+#         ###  PRICING RULES (MANDATORY)
+
+#         - The agency uses flat-rate pricing only.
+#         - Never mention hourly rates, per-hour billing, or time-based pricing.
+#         - If the context references hourly pricing, rewrite it into a flat-rate model
+#         without inventing specific prices.
+
+#         ----------------------------------------------------------------
+
+#         ###  SUBCONTRACTOR / VENDOR MODEL (MANDATORY)
+
+#         - Services are delivered through subcontractors and external vendors.
+#         - Reflect this in staffing, delivery, and execution descriptions.
+#         - Never imply work is delivered solely by in-house full-time staff.
+
+#         ----------------------------------------------------------------
+
+#         ###  ACCURACY RULE
+
+#         - Use ONLY information present in the provided context.
+#         - If required information is missing, write:
+#         “We do not have enough information to provide that detail
+#         based on the available context and company data.”
+
+#         ----------------------------------------------------------------
+
+#         ###  TONE & STYLE (MANDATORY)
+
+#         - Follow the agency’s voice as described in the context.
+#         - Professional, concise, confident.
+#         - No vague marketing language.
+#         - No generic AI phrasing.
+
+#         ----------------------------------------------------------------
+
+#         ###  CONCISION RULES
+
+#         - Short, direct sentences.
+#         - Active voice.
+#         - No filler or hedging language.
+
+#         ----------------------------------------------------------------
+
+#         ###  FORMATTING RULES
+
+#         - Do not use bullet points unless explicitly required by the RFP.
+#         - Do not reference “context” or “question” in the final response.
+
+#         ----------------------------------------------------------------
+
+#         Context:
+#         {context}
+
+#         Question:
+#         {question}
+
+#         Final Answer:
+#     """
+#     try:
+#         response = client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             messages=[
+#                 {
+#                     "role": "system",
+#                     "content": "You are a professional RFP response specialist who strictly follows behavioral authority, factual accuracy, and style rules."
+#                 },
+#                 {"role": "user", "content": prompt}
+#             ],
+#             temperature=0.2,
+#             max_tokens=1600
+#         )
+#         return response.choices[0].message.content.strip()
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
 
 def analyze_answer_score_only(question_text: str, answer_text: str) -> float:
     prompt = f"""

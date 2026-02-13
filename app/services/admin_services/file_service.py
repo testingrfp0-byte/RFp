@@ -173,33 +173,43 @@ def add_footer_page_numbers(doc: Document):
     run._r.append(instrText)
     run._r.append(fldChar2)
 
+def numbered_line(line):
+    return bool(re.match(r"^\d+(\.\d+)*[\.\-\)]?\s+", line))
+
 def add_formatted_text(doc: Document, text: str):
+    """
+    Add formatted text into DOCX document with:
+    - Bullet formatting
+    - Numbered list formatting
+    - Clean paragraph spacing
+    - Justified text alignment
+    """
+
     if not text:
         return
 
     lines = text.split("\n")
-    in_bullet_block = False
 
     for line in lines:
         line = clean_text(line)
         if not line:
             continue
 
-        # -------- BULLET ----------
         if bullet_line(line):
-            in_bullet_block = True
             bullet = doc.add_paragraph(
                 line.lstrip("-*• ").strip(),
                 style="List Bullet"
             )
-            bullet.paragraph_format.left_indent = Inches(0.5)
-            bullet.paragraph_format.space_after = Pt(2)
+            bullet.paragraph_format.space_after = Pt(3)
 
-        # -------- NORMAL PARAGRAPH ----------
+        elif numbered_line(line):
+            num = doc.add_paragraph(line.strip(), style="List Number")
+            num.paragraph_format.space_after = Pt(3)
+
         else:
-            in_bullet_block = False
             para = doc.add_paragraph(line)
             para.paragraph_format.space_after = Pt(10)
+            para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
     end = doc.add_paragraph("")
     end.paragraph_format.space_after = Pt(8)
