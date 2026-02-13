@@ -18,6 +18,7 @@ class UserRepository:
             db.query(RFPQuestion, Reviewer)
             .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
             .filter(Reviewer.user_id == user_id)
+            .order_by(RFPQuestion.id.asc())
             .all()
         )
     
@@ -66,7 +67,7 @@ class UserRepository:
         return (
             db.query(ReviewerAnswerVersion)
             .filter_by(user_id=user_id, ques_id=question_id)
-            .order_by(ReviewerAnswerVersion.generated_at.desc())
+            .order_by(ReviewerAnswerVersion.generated_at.asc())
             .all()
         )
     

@@ -1,4 +1,5 @@
 import re
+from sqlalchemy import asc,nullslast
 from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -150,7 +151,11 @@ def get_assign_user_status_service(db: Session, current_user):
                 detail="Only admins can access check user status"
             )
 
-        reviewers = db.query(Reviewer).all()
+        reviewers = (db.query(Reviewer)
+            .order_by(Reviewer.ques_id.asc())
+            .all()
+        )
+
         if not reviewers:
             return {
                 "message": "No reviewers found",
