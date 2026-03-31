@@ -327,132 +327,6 @@ async def reassign_reviewer_service(request: ReassignReviewerRequest, db: Sessio
         "submit_status": existing.submit_status
     }
 
-# async def regenerate_answer_with_chat_service(request, db: Session):
-#     user_id = request.user_id
-#     ques_id = request.ques_id
-#     chat_message = request.chat_message
-
-#     reviewer = db.query(Reviewer).filter_by(
-#         user_id=user_id,
-#         ques_id=ques_id
-#     ).first()
-
-#     if not reviewer:
-#         raise HTTPException(
-#             status_code=404,
-#             detail="Reviewer not assigned to this question"
-#         )
-
-#     question = db.query(RFPQuestion).filter_by(id=ques_id).first()
-#     if not question:
-#         raise HTTPException(
-#             status_code=404,
-#             detail="Question not found"
-#         )
-
-#     base_answer = reviewer.ans or ""
-
-#     keystone_text = get_active_keystone_text(
-#         db=db,
-#         admin_id=question.admin_id
-#     )
-
-#     rfp_context = get_similar_context(
-#         question.question_text,
-#         question.rfp_id,
-#         top_k=5
-#     )
-
-#     system_prompt = (
-#         "You are a senior proposal writer refining an RFP response.\n\n"
-
-#         "### KEYSTONE DATA (PRIMARY SOURCE — DO NOT VIOLATE):\n"
-#         f"{keystone_text}\n\n"
-
-#         "### NON-NEGOTIABLE RULES:\n"
-#         "- Keystone Data is the single source of truth for company facts\n"
-#         "- Do NOT modify, remove, or invent company details\n"
-#         "- Do NOT add new services, certifications, locations, or metrics\n"
-#         "- If reviewer feedback conflicts with Keystone Data, Keystone wins\n\n"
-
-#         "### Rewrite Mode (Highest Priority):\n"
-#         "- If feedback includes rewrite / shorten / summarize / rephrase,\n"
-#         "  follow those instructions exactly\n"
-#         "- Do NOT add new content when shortening\n"
-#         "- Preserve meaning only\n\n"
-
-#         "### General Rules:\n"
-#         "- Improve clarity and flow when not in rewrite mode\n"
-#         "- Produce plain text only (no markdown)\n"
-#         "- Do NOT repeat the question text\n"
-#         "- Output must be client-ready and professional\n"
-#         "- Use 'we' or 'our' to refer to the company\n"
-#         "- Never use 'I'\n"
-#         "- Refer to the issuer by their short name from RFP context\n"
-#         "- Anchor responses to RFP specifics from context\n"
-#         "- If feedback asks to add details, only use Keystone Data or RFP context — state 'No additional information available' if missing\n"
-#         "- For examples or case studies, only use anonymized or generalized ones from Keystone if available\n"
-#         "- Ensure response is concise yet comprehensive\n"
-#         "- Handle common feedback types:\n"
-#         "  - Clarify: Rephrase ambiguous parts without adding info\n"
-#         "  - Expand: Add depth only from sources\n"
-#         "  - Remove: Eliminate specified elements exactly\n"
-#         "  - Align: Ensure matches RFP requirements verbatim\n"
-#     )
-
-#     user_prompt = f"""
-# Question:
-# {question.question_text}
-
-# Existing Answer:
-# {base_answer}
-
-# Reviewer Feedback:
-# {chat_message}
-
-# RFP Context:
-# {rfp_context}
-
-# Regenerate the answer while strictly respecting Keystone Data.
-# """
-
-#     response = client.chat.completions.create(
-#         model="gpt-4o-mini",
-#         messages=[
-#             {"role": "system", "content": system_prompt},
-#             {"role": "user", "content": user_prompt},
-#         ],
-#         temperature=0.3,
-#     )
-
-#     refined_answer = response.choices[0].message.content.strip()
-#     refined_answer = re.sub(r"(\*\*|##+)", "", refined_answer)
-
-#     new_version = ReviewerAnswerVersion(
-#         user_id=user_id,
-#         ques_id=ques_id,
-#         answer=refined_answer,
-#         generated_at=datetime.utcnow()
-#     )
-#     db.add(new_version)
-
-#     reviewer.ans = refined_answer
-#     db.commit()
-#     db.refresh(new_version)
-
-#     return {
-#         "status": "success",
-#         "message": "Answer regenerated using Keystone Data",
-#         "new_answer_version": {
-#             "id": new_version.id,
-#             "ques_id": ques_id,
-#             "user_id": user_id,
-#             "answer": refined_answer,
-#             "generated_at": new_version.generated_at,
-#         }
-#     }
-
-
 async def regenerate_answer_with_chat_service(request, db: Session):
     user_id = request.user_id
     ques_id = request.ques_id
@@ -715,7 +589,7 @@ If not, revise until it does. Then output the final result.
     # LLM call
     # ----------------------------------------------------------------
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5.4",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
