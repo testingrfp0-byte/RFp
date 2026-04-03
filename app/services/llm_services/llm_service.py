@@ -1058,7 +1058,7 @@ def extract_questions_with_llm(pdf_text: str) -> dict:
         """
 
     content = chat_model(
-        model="gpt-5.4",
+        model="gpt-4o-mini",
         system_prompt="Return ONLY strict valid JSON. No markdown. No commentary.",
         user_prompt=prompt,
         temperature=0,

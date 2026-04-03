@@ -185,6 +185,7 @@ def fetch_file_details(db: Session):
             .filter(func.trim(RFPDocument.category) != '')
             .all()
         )
+        print()
         return documents
     except Exception as e:
         print(e)
