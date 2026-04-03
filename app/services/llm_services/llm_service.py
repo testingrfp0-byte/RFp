@@ -85,7 +85,7 @@ def generate_search_queries(rfp_text: str) -> list:
     system_prompt = "You generate Google search queries to build complete company profiles from RFPs."
 
     content = chat_model(
-        model="gpt-5.4",    
+        model="gpt-4o-mini",    
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.4,
@@ -353,6 +353,12 @@ Extract EVERY detail about the organization issuing the RFP.
 ### **Section 3: Submission Details & Requirements**
 
 **THIS IS THE MOST CRITICAL SECTION - ABSOLUTE COMPLETENESS REQUIRED**
+**CRITICAL OUTPUT RULE:**
+- ONLY output fields where actual information EXISTS in the document
+- If a field has no information, SKIP IT ENTIRELY — do not write "No information available"
+- Do NOT show empty categories or headers if nothing exists under them
+- Do NOT duplicate any information — if same detail appears twice, show it ONCE only
+- Every bullet must contain a real extracted value from the document
 
 **Extract EVERY SINGLE:**
 
@@ -472,7 +478,7 @@ For each contact person, capture:
 - If a requirement has multiple parts, include all parts
 
 **If no details found:** "No submission details or requirements available."
-
+**If same details found** ONLY SHOW FOUND DETAILS ONCE, DO NOT DUPLICATE.
 ============================================================
 **SYSTEMATIC MULTI-PASS VERIFICATION**
 ============================================================
@@ -601,7 +607,7 @@ CRITICAL REMINDER:
     )
 
     return chat_model(
-        model="gpt-5.4",
+        model="gpt-4o-mini",
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.1,
@@ -805,7 +811,6 @@ What is absolutely necessary to avoid disqualification?
   minimum qualifications, must-have documents
 - Distinguish clearly: mark "DISQUALIFYING" for hard cutoffs vs "PENALIZED" for point deductions
 - Format as a compliance checklist with exact RFP language
-
 ---
 
 **4.4 Winning Differentiators**
@@ -987,7 +992,7 @@ Web Search Snippets:
     )
 
     return chat_model(
-        model="gpt-5.4",
+        model="gpt-4o-mini",
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         temperature=0.5,
@@ -1430,7 +1435,7 @@ def generate_answer_with_context(
 
     try:
         content = chat_model(
-        model="gpt-5.4",
+        model="gpt-4o-mini",
         system_prompt=(
             "You are a professional RFP response specialist who strictly follows "
             "behavioral authority, factual accuracy, and style rules. "
@@ -1474,7 +1479,7 @@ Answer: {answer_text}
     """
 
     response = client.chat.completions.create(
-        model="gpt-5.4",
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
     )
@@ -1563,7 +1568,7 @@ def generate_summary(text: str) -> str:
     """Generate summary of an RFP using LLM."""
     prompt = f"Summarize the following RFP in 3-5 paragraphs:\n\n{text[:8000]}"
     response = client.chat.completions.create(
-        model="gpt-5.4",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "You are an RFP summarizer."},
             {"role": "user", "content": prompt}

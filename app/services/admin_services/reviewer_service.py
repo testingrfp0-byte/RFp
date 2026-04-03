@@ -589,7 +589,7 @@ If not, revise until it does. Then output the final result.
     # LLM call
     # ----------------------------------------------------------------
     response = client.chat.completions.create(
-        model="gpt-5.4",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},

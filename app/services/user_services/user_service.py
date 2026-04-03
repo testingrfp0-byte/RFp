@@ -57,6 +57,7 @@ class UserService:
                 rfp_id=rfp_id,
                 admin_id=question.admin_id
             )
+            # print(enhanced_context)
 
             
             answer = self.business_logic.generate_answer_for_question(

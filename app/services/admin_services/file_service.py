@@ -108,6 +108,55 @@ def upload_documents(files, project_name, category, current_user, db: Session):
 
     return uploaded_docs
 
+def upload_background_document(file, project_name, category, current_user, db: Session):
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in [".pdf", ".docx", ".pptx", ".xlsx", ".xls"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format: {file.filename}"
+        )
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    saved_filename = f"{timestamp}_{file.filename}"
+    file_path = os.path.join(UPLOAD_FOLDER, saved_filename)
+
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+    extracted_text = extract_text_from_file(file_path)
+    if not extracted_text:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not extract text from file: {file.filename}"
+        )
+
+    new_doc = RFPDocument(
+        filename=file.filename,
+        file_path=file_path,
+        category=category,
+        project_name=project_name,
+        admin_id=current_user.id,
+        uploaded_at=datetime.utcnow(),
+        file_hash=file_hash,
+        extracted_text=extracted_text
+    )
+    db.add(new_doc)
+    db.commit()
+    db.refresh(new_doc)
+
+    return {
+        "document_id": new_doc.id,
+        "filename": new_doc.filename,
+        "category": new_doc.category,
+        "project_name": new_doc.project_name,
+        "uploaded_at": new_doc.uploaded_at
+    }
+
 def get_final_answer(question: RFPQuestion) -> str | None:
     for rev in question.reviewers:
         if rev.submit_status == "submitted" and rev.ans:

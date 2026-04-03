@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.models.rfp_models import User,KeystoneFile
+from app.models.rfp_models import KeystoneFile, RFPDocument
 from app.services.llm_services.llm_service import (
     get_similar_context, 
     generate_answer_with_context,
@@ -75,9 +75,31 @@ class UserBusinessLogic:
                 detail="Keystone Data not uploaded. Please upload Keystone XLS."
             )
 
+        background_doc = (
+            self.db.query(RFPDocument)
+            .filter(
+                RFPDocument.admin_id == admin_id,
+                RFPDocument.category == "Client and Industry Background",
+                RFPDocument.is_deleted == False
+            )
+            .order_by(RFPDocument.uploaded_at.desc())
+            .first()
+        )
+
+        background_text = (
+            background_doc.extracted_text
+            if background_doc and background_doc.extracted_text
+            else "Client and Industry Background document not found."
+        )
+
         enhanced_context = f"""
     KEYSTONE DATA (PRIMARY SOURCE – MUST FOLLOW):
     {keystone.extracted_text}
+
+    ----------------------------------------
+
+    CLIENT AND INDUSTRY BACKGROUND:
+    {background_text}
 
     ----------------------------------------
 
@@ -85,7 +107,11 @@ class UserBusinessLogic:
     {rfp_context}
     """
 
-        return enhanced_context, ["keystone", "rfp"]
+        sources = ["keystone", "rfp"]
+        if background_doc and background_doc.extracted_text:
+            sources.append("client_industry_background")
+
+        return enhanced_context, sources
 
     def generate_answer_for_question(self, question_text: str, enhanced_context: str, short_name: str) -> str:
         """Generate and clean answer"""
