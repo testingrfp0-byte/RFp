@@ -32,10 +32,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
 client = OpenAI(api_key=OPENAI_API_KEY)
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_ENV = os.getenv("PINECONE_ENV", "aws-us-east-1")
-PINECONE_INDEX = os.getenv("PINECONE_INDEX", "kb-index")
-PINECONE_INDEX_RINGER = os.getenv("PINECONE_INDEX_RINGER", "ringerinfo")
-
+PINECONE_ENV = os.getenv("PINECONE_ENV", "us-east-1")
+PINECONE_INDEX = "devkb"      #os.getenv("PINECONE_INDEX", "devkb")
+# PINECONE_INDEX_RINGER = os.getenv("PINECONE_INDEX_RINGER", "ringerinfo")
+print(f"Pinecone API Key: {PINECONE_API_KEY}")
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
 if PINECONE_INDEX not in pc.list_indexes().names():
@@ -45,23 +45,23 @@ if PINECONE_INDEX not in pc.list_indexes().names():
         metric="cosine",
         spec=ServerlessSpec(
             cloud="aws",
-            region=PINECONE_ENV,
+            region="us-east-1",
         ),
     )
 
-if PINECONE_INDEX_RINGER not in pc.list_indexes().names():
-    pc.create_index(
-        name=PINECONE_INDEX_RINGER,
-        dimension=1536,
-        metric="cosine",
-        spec=ServerlessSpec(
-            cloud="aws",
-            region=PINECONE_ENV,
-        ),
-    )
+# if PINECONE_INDEX_RINGER not in pc.list_indexes().names():
+#     pc.create_index(
+#         name=PINECONE_INDEX_RINGER,
+#         dimension=1536,
+#         metric="cosine",
+#         spec=ServerlessSpec(
+#             cloud="aws",
+#             region=PINECONE_ENV,
+#         ),
+#     )
 
 index = pc.Index(PINECONE_INDEX)
-index_ringer = pc.Index(PINECONE_INDEX_RINGER)
+# index_ringer = pc.Index(PINECONE_INDEX_RINGER)
 
 UPLOAD_FOLDER = "uploads"
 GENERATED_FOLDER = "generated_docs"

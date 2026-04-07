@@ -1576,24 +1576,24 @@ def generate_summary(text: str) -> str:
     )
     return response.choices[0].message.content.strip()
 
-def delete_rfp_embeddings(file_id: int):
-    try:
-        results = index.query(
-            vector=[0.0] * 1536,
-            top_k=10000,   
-            include_metadata=False,
-            filter={"file_id": str(file_id)}
-        )
+# def delete_rfp_embeddings(file_id: int):
+#     try:
+#         results = index.query(
+#             vector=[0.0] * 1536,
+#             top_k=10000,   
+#             include_metadata=False,
+#             filter={"file_id": str(file_id)}
+#         )
 
-        vector_ids = [match["id"] for match in results.get("matches", [])]
-        if vector_ids:
-            index.delete(ids=vector_ids)
-            print(f" Deleted {len(vector_ids)} Pinecone vectors for file_id {file_id}")
-        else:
-            print(f" No Pinecone vectors found for file_id {file_id}")
+#         vector_ids = [match["id"] for match in results.get("matches", [])]
+#         if vector_ids:
+#             index.delete(ids=vector_ids)
+#             print(f" Deleted {len(vector_ids)} Pinecone vectors for file_id {file_id}")
+#         else:
+#             print(f" No Pinecone vectors found for file_id {file_id}")
 
-    except Exception as e:
-        print(f" Error deleting embeddings for RFP {file_id}: {e}")
+#     except Exception as e:
+#         print(f" Error deleting embeddings for RFP {file_id}: {e}")
 
 def get_short_name(filename: str) -> str:
     """
@@ -1704,3 +1704,26 @@ def extract_xls_text(file_path: str) -> str:
                 output.append(row_text)
 
     return "\n".join(output)
+
+
+
+def delete_rfp_embeddings(file_id: int):
+    try:
+        namespace = f"rfp_{file_id}"
+
+        print("Deleting namespace:", namespace)
+
+        # DEBUG: check namespaces before delete
+        # stats_before = index.describe_index_stats()
+        # print("Before delete:", stats_before.get("namespaces", {}))
+
+        index.delete(delete_all=True, namespace=namespace)
+
+        # # DEBUG: check after delete
+        # stats_after = index.describe_index_stats()
+        # print("After delete:", stats_after.get("namespaces", {}))
+
+        print(f"Deleted embeddings for {namespace}")
+
+    except Exception as e:
+        print(f"Error: {e}")

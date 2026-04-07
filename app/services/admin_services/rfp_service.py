@@ -418,4 +418,60 @@ def get_trash_documents(db: Session, current_user):
             status_code=500,
             detail=f"Failed to fetch trash list: {str(e)}"
         )
-    
+
+
+# def client_permanent_delete_rfp(rfp_id: int, db: Session, current_user):
+#     try:
+#         if current_user.role != "admin":
+#             raise HTTPException(
+#                 status_code=status.HTTP_401_UNAUTHORIZED,
+#                 detail="Only admins can permanently delete docs."
+#             )
+
+#         rfp = (
+#             db.query(RFPDocument)
+#             .filter(RFPDocument.id == rfp_id, RFPDocument.is_deleted == True)
+#             .first()
+#         )
+
+#         if rfp:
+#             if rfp.file_path and os.path.exists(rfp.file_path):
+#                 os.remove(rfp.file_path)
+
+#             delete_rfp_embeddings(rfp_id)
+
+#             db.delete(rfp)
+#             db.commit()
+
+#             return {"message": "RFP permanently deleted."}
+        
+#         gen_doc = (
+#             db.query(GeneratedRFPDocument)
+#             .filter(
+#                 GeneratedRFPDocument.id == rfp_id,
+#                 GeneratedRFPDocument.is_deleted == True
+#             )
+#             .first()
+#         )
+
+#         if gen_doc:
+#             if gen_doc.file_path and os.path.exists(gen_doc.file_path):
+#                 os.remove(gen_doc.file_path)
+
+#             db.delete(gen_doc)
+#             db.commit()
+
+#             return {"message": "Generated document permanently deleted."}
+        
+#         raise HTTPException(
+#             status_code=404,
+#             detail="Document not found in Trash."
+#         )
+
+#     except HTTPException as http_exc:
+#         raise http_exc
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to permanently delete RFP document: {str(e)}"
+#         )

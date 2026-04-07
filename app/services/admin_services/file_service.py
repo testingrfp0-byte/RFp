@@ -17,6 +17,7 @@ from docx.oxml import OxmlElement, ns
 from docx import Document
 from docx.shared import Inches, Pt
 
+import re
 
 
 def upload_documents(files, project_name, category, current_user, db: Session):
@@ -74,7 +75,7 @@ def upload_documents(files, project_name, category, current_user, db: Session):
                     "text": summary
                 }
             )],
-            namespace="summaries"
+            namespace=f"rfp_{new_doc.id}"
         )
 
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
@@ -110,6 +111,7 @@ def upload_documents(files, project_name, category, current_user, db: Session):
 
 def upload_background_document(file, project_name, category, current_user, db: Session):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    uploaded_docs = []
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in [".pdf", ".docx", ".pptx", ".xlsx", ".xls"]:
         raise HTTPException(
@@ -149,13 +151,65 @@ def upload_background_document(file, project_name, category, current_user, db: S
     db.commit()
     db.refresh(new_doc)
 
-    return {
+
+    summary = generate_summary(extracted_text)
+    summary_vector = get_embedding(summary)
+    index.upsert(
+        vectors=[(
+            f"clint_background_summaries_{new_doc.id}",
+            summary_vector,
+            {
+                "document_id": str(new_doc.id),
+                "filename": new_doc.filename,
+                "category": new_doc.category,
+                "project_name": new_doc.project_name,
+                "type": "summary",
+                "text": summary
+            }
+        )],
+        namespace=f"rfp_{new_doc.id}"
+    )
+
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    chunks = splitter.split_text(extracted_text)
+    vectors = []
+    for i, chunk in enumerate(chunks):
+        vector = get_embedding(chunk)
+        vectors.append((
+            f"{new_doc.id}_{i}",
+            vector,
+            {
+                "document_id": str(new_doc.id),
+                "filename": new_doc.filename,
+                "category": new_doc.category,
+                "project_name": new_doc.project_name,
+                "type": "chunk",
+                "chunk_id": i,
+                "text": chunk
+            }
+        ))
+
+    print(f"Upserting {len(vectors)} vectors for document ID {new_doc.id}")    
+
+    if vectors:
+        index.upsert(vectors=vectors, namespace=f"rfp_{new_doc.id}")
+
+    uploaded_docs.append({
         "document_id": new_doc.id,
         "filename": new_doc.filename,
         "category": new_doc.category,
-        "project_name": new_doc.project_name,
-        "uploaded_at": new_doc.uploaded_at
-    }
+        "project_name": new_doc.project_name
+    })
+
+    return uploaded_docs
+
+    # return {
+    #     "document_id": new_doc.id,
+    #     "filename": new_doc.filename,
+    #     "category": new_doc.category,
+    #     "project_name": new_doc.project_name,
+    #     "uploaded_at": new_doc.uploaded_at
+    # }
 
 def get_final_answer(question: RFPQuestion) -> str | None:
     for rev in question.reviewers:
@@ -263,7 +317,6 @@ def add_formatted_text(doc: Document, text: str):
     end = doc.add_paragraph("")
     end.paragraph_format.space_after = Pt(8)
 
-import re
 
 def extract_question_number(text: str):
     """

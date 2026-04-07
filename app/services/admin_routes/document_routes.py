@@ -252,7 +252,7 @@ def upload_client_industry_background(
         uploaded_doc = upload_background_document(
             file=file,
             project_name=project_name,
-            category="Client and Industry Background",
+            category="Client_and_Industry_Background",
             current_user=current_user,
             db=db
         )
@@ -285,7 +285,7 @@ def list_client_industry_background_documents(
         db.query(RFPDocument)
         .filter(
             RFPDocument.admin_id == current_user.id,
-            RFPDocument.category == "Client and Industry Background",
+            RFPDocument.category == "Client_and_Industry_Background",
             RFPDocument.is_deleted == False
         )
         .order_by(RFPDocument.uploaded_at.desc())
@@ -354,46 +354,3 @@ def delete_generated_document(
         "document_id": doc_id
     }
 
-
-@router.delete("/client-industry-background/{document_id}")
-def delete_client_industry_background_document(
-    document_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    if current_user.role.lower() != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Only admins can delete client and industry background documents."
-        )
-
-    document = (
-        db.query(RFPDocument)
-        .filter(
-            RFPDocument.id == document_id,
-            RFPDocument.admin_id == current_user.id,
-            RFPDocument.category == "Client and Industry Background",
-            RFPDocument.is_deleted == False
-        )
-        .first()
-    )
-
-    if not document:
-        raise HTTPException(
-            status_code=404,
-            detail="Client and Industry Background document not found."
-        )
-
-    try:
-        if document.file_path and os.path.exists(document.file_path):
-            os.remove(document.file_path)
-    except Exception:
-        pass
-
-    db.delete(document)
-    db.commit()
-
-    return {
-        "message": "Client and Industry Background document deleted successfully.",
-        "document_id": document_id
-    }
