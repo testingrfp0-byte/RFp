@@ -5,7 +5,7 @@ from app.schemas.schema import (
     AssignReviewer, ReviewerOut, reviwerdelete, ReassignReviewerRequest)
 from app.models.rfp_models import User
 from app.api.routes.utils import get_current_user
-from app.utils.admin_function import (
+from app.services.admin_services import (
     assign_multiple_review, get_reviewers_by_file_service,
     remove_user_service, delete_reviewer_service,
     reassign_reviewer_service)

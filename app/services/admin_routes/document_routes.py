@@ -14,7 +14,7 @@ from app.config import GENERATED_FOLDER
 from app.db.database import get_db
 from app.models.rfp_models import User, RFPDocument,GeneratedRFPDocument,RFPQuestion
 from app.api.routes.utils import get_current_user
-from app.utils.admin_function import upload_documents,get_final_answer,clean_text,add_footer_page_numbers,add_formatted_text,extract_question_number
+from app.services.admin_services import upload_documents,get_final_answer,clean_text,add_footer_page_numbers,add_formatted_text,extract_question_number
 from app.services.admin_services.file_service import upload_background_document
 from app.schemas.schema import FileDetails
 
@@ -212,7 +212,8 @@ def upload_library_new(
     project_name: str = Form(...),
     category: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    provider: str = "openai"
 ):
     if current_user.role.lower() != "admin":
         raise HTTPException(
@@ -221,7 +222,7 @@ def upload_library_new(
         )
 
     try:
-        uploaded_docs = upload_documents(files, project_name, category, current_user, db)
+        uploaded_docs = upload_documents(files, project_name, category, current_user, db, provider)
         return {
             "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
             "documents": uploaded_docs
@@ -293,8 +294,6 @@ def list_client_industry_background_documents(
     )
 
     return documents
-
-
 
 @router.get("/documents/{doc_id}/download")
 def download_generated_document(

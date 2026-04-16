@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from app.models.rfp_models import User,KeystoneFile
-from app.config import client, index,SERPAPI_KEY
+from app.config import client, index
 from pptx import Presentation
 from PyPDF2 import PdfReader
 from fastapi import HTTPException
@@ -13,6 +13,11 @@ from PIL import Image
 
 load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+from app.core.llm_client import get_llm_client
+from app.core.prompts import question_prompt,mode_block_prompt ,answer_generation_prompt, summary_and_analysis_prompt, summary_format_prompt, search_queries_prompt, generate_score_prompt
+from app.core.llm_client.openai import OpenAIEmbeddingClient
+
 
 def extract_text_from_pdf(pdf_file: bytes) -> str:
     text = ""
@@ -34,67 +39,19 @@ def extract_text_from_pdf(pdf_file: bytes) -> str:
 
     return text
 
-def chat_model(model: str, system_prompt: str, user_prompt: str, temperature: float , max_tokens: int) -> str:
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        temperature=temperature,
-        max_completion_tokens=max_tokens
-    )
-    return response.choices[0].message.content.strip()
 
-def generate_search_queries(rfp_text: str) -> list:
+def generate_search_queries(rfp_text: str, provider: str) -> list:
     """
     Generate exactly 12 highly targeted Google search queries based on RFP text.
     """
-    user_prompt = f"""
-    You are an expert market intelligence researcher specializing in analyzing companies from Request for Proposal (RFP) documents.
-
-    Your task: Generate exactly 12 highly targeted Google search queries based only on the RFP text below.  
-
-    The queries must:
-    - Be precise, varied, and investigative.
-    - Always incorporate unique identifiers from the RFP (company name, product names, technologies, industries).
-    - Cover multiple areas:  
-      1. Company history and ownership  
-      2. Core products, services, or solutions  
-      3. Industry verticals or markets served  
-      4. Partnerships, clients, and case studies  
-      5. Locations and employee count  
-      6. Awards, recognition, and certifications  
-      7. Financials, funding, or revenue (if available)  
-      8. Competitors and market positioning  
-      9. Technology platforms mentioned in the RFP  
-      10. Recent press releases or news coverage
-      11. Proposal submission requirements for this RFP
-      12. Official submission due date / deadlines for this RFP
-
-    Format:
-    - Output as a bullet list, one query per line.
-    - Do not add explanations — only the search queries.
-
-    RFP Text:
-    \"\"\"
-    {rfp_text}
-    \"\"\"
-    """
-
+    prompt = search_queries_prompt(rfp_text)
     system_prompt = "You generate Google search queries to build complete company profiles from RFPs."
 
-    content = chat_model(
-        model="gpt-4o-mini",    
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        temperature=0.4,
-        max_tokens=2000
-    )
-
+    client = get_llm_client(provider)
+    content = client.complete(prompt=prompt, system=system_prompt)
     return [line.strip(" -•") for line in content.split("\n") if line.strip()]
 
-def extract_company_background_from_rfp(rfp_text: str) -> str:
+def extract_company_background_from_rfp(rfp_text: str, provider: str) -> str:
     """
     Extracts 3 fully detailed sections from an RFP:
     1. Purpose of the RFP (including Scope of Work, Buyer Priorities & Win Themes)
@@ -102,497 +59,7 @@ def extract_company_background_from_rfp(rfp_text: str) -> str:
     3. Submission Details & Requirements
     """
 
-    user_prompt = f"""
-You are a senior RFP analyst with deep expertise in procurement, compliance, and government/enterprise documentation.
-
-Your task is to extract and reorganize information from the provided RFP text into **exactly three sections**.
-
-============================================================
-**CRITICAL EXTRACTION RULES (DO NOT VIOLATE)**
-============================================================
-
-**1. ZERO HALLUCINATIONS - EXTRACTION ONLY**
-- You are EXTRACTING, not writing. Every word must come from the RFP text.
-- If information is not present in the RFP, write "No information available" for that element.
-- NEVER infer, assume, add context, or use external knowledge.
-- NEVER add examples, best practices, or general advice not in the RFP.
-- NEVER invent company names, dates, requirements, contact details, or any data not explicitly stated.
-
-**2. ABSOLUTE COMPLETENESS - MISS NOTHING**
-- Read the ENTIRE RFP document from beginning to end before extracting.
-- Scan ALL sections including: cover page, table of contents, main body, appendices, attachments, footnotes, headers, footers, sidebars, and exhibits.
-- Information is often scattered across multiple sections - systematically gather ALL occurrences.
-- For each type of information (dates, contacts, requirements), search the ENTIRE document.
-- If something appears multiple times with different details, include the most complete version.
-- Pay special attention to:
-  * Fine print and small text
-  * Tables and structured data (extract ALL rows, not samples)
-  * Appendices labeled "Required Forms" or "Submission Instructions"
-  * Sections near the end of the document (often contain critical deadlines)
-
-**3. VERBATIM PRESERVATION WITH COMPLETE ACCURACY**
-- Use the RFP's exact wording, terminology, and phrasing.
-- Preserve ALL technical terms, acronyms, and specific requirements exactly as written.
-- Copy ALL numbers, dates, times, addresses, names, phone numbers, emails, URLs EXACTLY as they appear.
-- For dates: include day of week if mentioned, timezone if specified, full year.
-- For contacts: include full name, title, department, phone, email, address if provided.
-- For requirements: preserve exact wording including "must," "shall," "should," "required," etc.
-- Only merge sentences when absolutely necessary for flow - never change meaning or lose detail.
-
-**4. STRICT SECTION BOUNDARIES**
-- Purpose content ONLY in Section 1
-- Background content ONLY in Section 2
-- Submission/procedural content ONLY in Section 3
-- NO overlap between sections
-- NO duplication of information
-
-============================================================
-**⚠️ SCOPE OF WORK DECOMPOSITION RULE — CRITICAL, NEVER VIOLATE**
-============================================================
-
-When the RFP contains a clearly enumerated list of deliverables, responsibilities,
-scope items, or work areas — whether numbered (1, 2, 3...) or bulleted — you MUST:
-
-- TREAT EACH ITEM AS A SEPARATE, INDEPENDENT ENTITY
-- NEVER merge, collapse, or summarize multiple scope items into one sentence or paragraph
-- Extract EVERY sub-detail, bullet, and sub-bullet for EACH item individually
-- Present each scope item with its own label using the EXACT name from the RFP
-- Preserve the original numbering from the RFP (e.g., "1.", "2.", "3.")
-- If sub-bullets exist under a scope item, include ALL of them under that item
-
-**⚠️ SCOPE SOURCE RESTRICTION — CRITICAL:**
-Extract scope items ONLY from the section explicitly labeled "Scope of Work," "Scope of Services,"
-"Deliverables," "Work Requirements," or a direct equivalent.
-DO NOT pull items from sections labeled "Priorities," "Goals," "Objectives," "Key Focus Areas,"
-"Other Priorities," "Background," or "Introduction" and present them as scope items.
-Those sections belong in the Purpose narrative — NOT in the Scope breakdown.
-
-Wrong behavior (DO NOT DO):
-Pulling "Represent diversity: BIPOC representation..." from an "Other Priorities" section
-and labeling it as a Scope Item.
-
-Correct behavior:
-Only items explicitly listed under the RFP's own "Scope of Work" section appear as Scope Items.
-Priority/goal items appear only in the Purpose narrative or Buyer Priorities subsection.
-
-**Example of CORRECT scope extraction:**
-
-Scope Item 1: [Exact name from RFP]
-- [Exact sub-detail 1 verbatim]
-- [Exact sub-detail 2 verbatim]
-- [All remaining sub-details]
-
-Scope Item 2: [Exact name from RFP]
-- [Exact sub-detail 1 verbatim]
-- [All remaining sub-details]
-
-[Continue for EVERY scope item — never skip one]
-
-============================================================
-**SECTION REQUIREMENTS**
-============================================================
-
-### **Section 1: Purpose of the RFP**
-
-**COMPREHENSIVE EXTRACTION INSTRUCTIONS:**
-
-Extract ALL content that explains WHY this RFP exists and WHAT is being procured.
-
-**Must Include Everything From:**
-- Executive Summary sections
-- Introduction or Overview sections
-- Background or Context sections
-- Project Description sections
-- Statement of Need or Problem Statement
-- Purpose or Intent statements
-- Objectives or Goals sections
-- Scope of Work or Scope of Services (decomposed individually per the rule above)
-- Project Timeline or Phases (high-level)
-- Expected Deliverables or Outcomes
-- Strategic rationale or business case
-- Stakeholder information (who benefits, who is involved)
-- Funding source or budget context (ONLY when explaining purpose, not detailed budget)
-- Any narrative that explains the "why" behind the procurement
-- Key Focus Areas, Other Priorities, and similar sections
-  (these go in Purpose narrative and Buyer Priorities — NOT as Scope Items)
-
-**Search These Locations:**
-- First 10 pages of document
-- Any section titled: Purpose, Background, Introduction, Overview, Project Description,
-  Scope, Need, Problem, Objectives, Key Focus Areas, Priorities
-- Preamble or cover letter from issuing organization
-- Executive summary
-
-**Must Exclude From Section 1:**
-- Submission deadlines, due dates, or timelines for vendors
-- How to submit proposals (email, portal, address)
-- Proposal formatting requirements (fonts, margins, page limits)
-- Required forms or attachments to submit
-- Contact information for questions
-- Evaluation criteria details or scoring
-- Vendor qualifications or eligibility requirements
-
-**If no purpose found:** "No information available on the purpose of the RFP."
-
----
-
-**Then add these subsections:**
-
-**Buyer Priorities & Win Themes:**
-
-Extract 3-10 bullet points that reveal what the buyer values most.
-
-**Where to Search:**
-- Evaluation criteria sections (look for high-point items)
-- Sections with words like: "critical," "essential," "priority," "key," "must-have," "required"
-- Repeated themes mentioned 3+ times in the document
-- Mission/values statements from the issuing organization
-- Key Focus Areas, Other Priorities sections
-- Any section describing ideal vendor characteristics
-- Scoring rubrics or rating scales
-
-**What to Extract:**
-- Capabilities the buyer emphasizes repeatedly
-- Values mentioned in mission/vision statements
-- High-weighted evaluation criteria
-- "Must-have" requirements vs "nice-to-have"
-- Strategic priorities mentioned in background sections
-- Themes around: quality, innovation, cost, experience, approach, collaboration, etc.
-
-**Format as:**
-- Clear, concise statements using RFP's language
-
-**If none found:** "No buyer priorities or win themes identified."
-
----
-
-**Key Phrases to Echo in Responses:**
-
-Extract 3-15 short verbatim quotes (5-30 words each) that reveal the buyer's voice, values, and expectations.
-
-**Format as:**
-- Each phrase in quotation marks
-- Keep quotes 5-30 words maximum
-- Only use EXACT quotes from the RFP
-- Include attribution if from a specific section
-
-**If none found:** "No key phrases identified."
-
----
-
-**⚠️ EVALUATION CRITERIA EXTRACTION FOR DOWNSTREAM USE:**
-
-At the end of Section 1, add a clearly labeled sub-section:
-
-**Evaluation Criteria (Raw Extraction for Analysis):**
-
-List every evaluation criterion exactly as written, with its point value or weight.
-This is critical data used for strategic analysis downstream.
-Format:
-- [Criterion name exactly as written] — [point value or weight]
-- [Continue for ALL criteria]
-
-If no formal scoring exists, list the strongest implied priorities verbatim from the RFP.
-
-**Mandatory Language Flags:**
-
-List every sentence or clause that uses the words "must," "shall," "required," or "mandatory."
-These are compliance triggers.
-Format:
-- "[Exact sentence using must/shall/required/mandatory]"
-- [Continue for ALL instances found in the document]
-
-============================================================
-
-### **Section 2: Company Background**
-
-**COMPREHENSIVE EXTRACTION INSTRUCTIONS:**
-
-Extract EVERY detail about the organization issuing the RFP.
-
-**Must Include All Available Information On:**
-
-- Full legal name of organization
-- Common name, abbreviations, or acronyms used
-- Organization type (public sector, private company, nonprofit, government agency, etc.)
-- Parent organization or governing body (if applicable)
-- Organizational structure or hierarchy
-- Headquarters address (full address if provided)
-- Branch locations, satellite offices, or service areas
-- Geographic regions served
-- Founding date or year established
-- Key milestones in organizational history
-- Mission statement (full text if provided)
-- Vision statement
-- Core values or guiding principles
-- Strategic priorities or focus areas
-- Number of employees or staff count
-- Annual budget or revenue (if mentioned)
-- Number of facilities or locations
-- Core programs or service lines
-- Departments, divisions, or units
-- Population or community served
-- Board structure or governing body
-- Partner organizations or collaborators
-- Professional associations or memberships
-- Awards or recognition received
-- Current strategic initiatives
-- DEI (Diversity, Equity, Inclusion) commitments or policies
-
-**Must Exclude From Section 2:**
-- Project scope details (belongs in Section 1)
-- Submission requirements or procedures
-- Vendor qualifications needed
-- Evaluation or selection criteria
-- Deadlines or contact information
-
-**If no background:** "No company background information available."
-
-============================================================
-
-### **Section 3: Submission Details & Requirements**
-
-**THIS IS THE MOST CRITICAL SECTION - ABSOLUTE COMPLETENESS REQUIRED**
-**CRITICAL OUTPUT RULE:**
-- ONLY output fields where actual information EXISTS in the document
-- If a field has no information, SKIP IT ENTIRELY — do not write "No information available"
-- Do NOT show empty categories or headers if nothing exists under them
-- Do NOT duplicate any information — if same detail appears twice, show it ONCE only
-- Every bullet must contain a real extracted value from the document
-
-**Extract EVERY SINGLE:**
-
-**DEADLINES & CRITICAL DATES:**
-- Proposal submission deadline (date, time, timezone)
-- Question submission deadline (date, time, timezone)
-- Pre-bid conference date/time/location
-- Site visit date/time/location
-- Addendum release schedule
-- Award notification date
-- Contract start date
-- Any other dates or milestones
-
-**CONTACT INFORMATION (Extract ALL):**
-For each contact person, capture:
-- Full name, Title or position, Department or division
-- Phone number, Email address, Physical address
-- Website or portal URL, Fax number
-- Preferred contact method, Hours of availability
-
-**SUBMISSION LOGISTICS:**
-- HOW to submit (email, online portal, physical delivery, courier, etc.)
-- WHERE to submit (physical address, email address, portal URL)
-- WHEN to submit (exact date and time)
-- Number of copies required (originals vs copies, physical vs digital)
-- File formats accepted
-- File size limitations
-- File naming conventions required
-- Email subject line requirements
-- Packaging requirements
-- Delivery confirmation requirements
-- Late submission policy
-
-**REQUIRED DOCUMENTS & FORMS (List ALL by name):**
-- Bid forms or proposal forms (with form numbers)
-- Certifications required
-- Insurance certificates
-- Financial statements
-- Tax documents
-- References or past performance
-- Resumes or staff qualifications
-- Work samples or portfolio examples
-- Affidavits or sworn statements
-- Bond forms
-- Registration certificates or licenses
-- Appendices or attachments to complete
-
-**PROPOSAL CONTENT REQUIREMENTS:**
-- Required sections or narratives
-- Executive summary requirements
-- Technical proposal requirements
-- Cost proposal requirements
-- Page limits (overall and by section)
-- Word count limits
-- Formatting specifications (font, margin, spacing, paper size, binding)
-- Table of contents requirements
-- Page numbering requirements
-- Section organization or order
-- Cover page requirements
-
-**ELIGIBILITY & COMPLIANCE:**
-- Vendor registration requirements
-- Business licensing requirements
-- Professional certifications required
-- Insurance requirements (types and coverage amounts)
-- Bonding requirements
-- Minimum years in business
-- Minimum project experience
-- Geographic restrictions or preferences
-- Conflict of interest disclosures
-- Debarment certifications
-- Subcontractor disclosure rules
-
-**EVALUATION & SELECTION:**
-- Evaluation criteria (list each criterion with point value)
-- Total points possible
-- Minimum score to advance
-- Scoring methodology
-- Evaluation phases or stages
-- Selection process timeline
-- Interview or presentation requirements
-- Protest procedures or appeal rights
-- Award notification method
-
-**QUESTIONS & CLARIFICATIONS:**
-- How to submit questions
-- Question deadline
-- Where questions will be answered
-- Addendum release schedule
-
-**SPECIAL CONDITIONS & REQUIREMENTS:**
-- Confidentiality or non-disclosure requirements
-- Public records disclosure notices
-- Contract terms preview or sample contract
-- Payment terms
-- Performance requirements or KPIs
-- Reporting obligations
-- Site visit requirements
-- Sustainability or environmental requirements
-- Local hiring or preference requirements
-- Equal opportunity or affirmative action requirements
-- Data security or privacy requirements
-- Any other special terms, conditions, or requirements
-
-**BUDGET & PRICING:**
-- Cost proposal format required
-- Pricing sheet or template to use
-- What cost elements to include/exclude
-- Not-to-exceed amounts or budget caps
-
-**Format Requirements for Section 3:**
-- Present as a comprehensive bullet list
-- Each bullet should be a complete, clear requirement
-- Use exact wording from RFP whenever possible
-- Group related items together for clarity
-- Include ALL details for each item
-- If a requirement has multiple parts, include all parts
-
-**If no details found:** "No submission details or requirements available."
-**If same details found** ONLY SHOW FOUND DETAILS ONCE, DO NOT DUPLICATE.
-============================================================
-**SYSTEMATIC MULTI-PASS VERIFICATION**
-============================================================
-
-**First Pass - Initial Read:**
-Read entire document once to understand structure and locate information.
-
-**Second Pass - Section-by-Section Extraction:**
-Extract each section's content from the entire document.
-
-**Third Pass - Verification:**
-
-□ Section 1 Checklist:
-  - Purpose statement captured
-  - Problem/need identified
-  - Goals and objectives listed
-  - Scope of Work items listed INDIVIDUALLY — each one separate with all sub-details
-  - Scope items sourced ONLY from the Scope of Work section (not from Priorities/Goals)
-  - Buyer priorities listed
-  - Key phrases extracted
-  - Evaluation criteria extracted (raw, with point values)
-  - Mandatory language flags extracted
-
-□ Section 2 Checklist:
-  - Organization name(s) captured
-  - Location information included
-  - Organization type identified
-  - Size/scale information noted
-  - Mission/values extracted (if present)
-
-□ Section 3 Checklist (MOST CRITICAL):
-  - ALL deadlines captured
-  - ALL contact information extracted
-  - Submission method clearly stated
-  - ALL required documents/forms listed
-  - ALL formatting requirements noted
-  - ALL eligibility criteria included
-  - ALL evaluation criteria captured with point values
-  - Special instructions or conditions noted
-
-□ Final Accuracy Check:
-  - All dates match original exactly
-  - All numbers match original exactly
-  - All names match original exactly
-  - No content added that isn't in source
-  - No important details omitted
-  - Scope items not invented or pulled from wrong sections
-
-============================================================
-**OUTPUT FORMAT (STRICT)**
-============================================================
-
-Section 1: Purpose of the RFP
-[Comprehensive, detailed extraction of why this RFP was issued and what is being procured.
-Written in flowing paragraphs using the RFP's own language. Include ALL relevant context
-from the entire document. Include Key Focus Areas and Other Priorities in the narrative.]
-
-Scope of Work — Individual Breakdown:
-
-Scope Item 1: [Exact name from RFP]
-- [Exact sub-detail verbatim]
-- [All remaining sub-details]
-
-Scope Item 2: [Exact name from RFP]
-- [Exact sub-detail verbatim]
-- [All remaining sub-details]
-
-[Continue for ALL scope items — never merge, never skip, never pull from wrong section]
-
-Buyer Priorities & Win Themes:
-- [Priority 1 - based on RFP text with specific examples]
-- [Priority 2 - based on RFP text with specific examples]
-- [Continue for all priorities identified, minimum 3, maximum 10]
-
-Key Phrases to Echo in Responses:
-- "[Exact verbatim quote 1 from RFP]"
-- "[Exact verbatim quote 2 from RFP]"
-- [Continue for all key phrases found, minimum 3, maximum 15]
-
-Evaluation Criteria (Raw Extraction for Analysis):
-- [Criterion 1 exactly as written] — [point value]
-- [Criterion 2 exactly as written] — [point value]
-- [Continue for ALL criteria]
-
-Mandatory Language Flags:
-- "[Exact sentence containing must/shall/required/mandatory]"
-- [Continue for ALL instances]
-
-Section 2: Company Background
-[Comprehensive, detailed extraction of ALL information about the issuing organization.
-Written in flowing paragraphs. Cover every aspect listed in the requirements.]
-
-Section 3: Submission Details & Requirements
-[Exhaustive bullet list of EVERY procedural, administrative, and compliance requirement
-found in the entire document. Each requirement stated clearly and completely.
-Nothing omitted. Organized by category for clarity.]
-
-- [Requirement 1 with full details]
-- [Requirement 2 with full details]
-- [Continue for ALL requirements — typically 30-100+ items for comprehensive RFPs]
-
-============================================================
-**SOURCE RFP TEXT**
-============================================================
-\"\"\"{rfp_text}\"\"\"
-
-CRITICAL REMINDER:
-- You are EXTRACTING existing content, not creating new content.
-- Every fact, date, name, number must come from the source text.
-- Scope Items must come ONLY from the RFP's Scope of Work section — not from Priorities or Goals.
-- Section 3 must be EXHAUSTIVE - this is where 70% of critical information lives.
-- Missing a single deadline or requirement could disqualify a proposal.
-- Your extraction must be so complete that someone could respond to this RFP using ONLY your output.
-"""
+    prompt = summary_and_analysis_prompt(rfp_text)
 
     system_prompt = (
         "You are a meticulous RFP extraction specialist with perfect attention to detail. "
@@ -605,378 +72,20 @@ CRITICAL REMINDER:
         "Your Section 3 extractions are especially thorough, capturing every single submission "
         "requirement. You work methodically through checklists to ensure nothing is overlooked."
     )
+    client = get_llm_client(provider)
+    content = client.complete(prompt=prompt, system=system_prompt)
 
-    return chat_model(
-        model="gpt-4o-mini",
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        temperature=0.1,
-        max_tokens=4500
-    )
+    return content
 
-def summarize_results_with_llm(all_snippets: list, rfp_company_text: str) -> str:
+def summarize_results_with_llm(all_snippets: list, rfp_company_text: str, provider: str) -> str:
     """
     Combine RFP company description and web search snippets into a
     structured, executive-level analysis with 4 fixed sections.
     """
 
     combined_snippets = "\n".join(all_snippets)
-
-    user_prompt = f"""
-You are a senior strategy consultant preparing a formal RFP analysis brief.
-
-============================================================
-**CRITICAL RULES - ZERO VIOLATIONS ALLOWED**
-============================================================
-
-**1. SOURCE FIDELITY - NO ADDITIONS**
-- Use ONLY information from the RFP text and web snippets provided
-- NEVER add information from general knowledge
-- NEVER add examples, statistics, or facts not in the sources
-- If information is missing, explicitly state: "No information available in provided sources"
-- Every factual claim must be traceable to the inputs
-
-**2. COMPLETENESS - MISS NOTHING**
-- Extract ALL relevant information from both RFP and web snippets
-- Information may be scattered - consolidate comprehensively
-- Don't summarize away important details - include ALL sub-details, bullets, and structured elements verbatim where possible
-- Check both sources thoroughly before finalizing, including forms, templates, appendices, footnotes, and any structured data
-
-**3. ACCURACY VERIFICATION**
-- Double-check all numbers, dates, names against sources
-- Preserve exact terminology from the RFP
-- When RFP and web sources conflict, note: "RFP states [X], while web sources indicate [Y]"
-- Never merge conflicting information into a single statement
-
-**4. SECTION DISCIPLINE**
-- Each section has strict boundaries - respect them
-- No submission details in Sections 1 or 2
-- No background in Sections 1 or 3
-- No purpose narrative in Sections 2 or 3
-- Section 4 is analytical and strategic - it may reference content from all other sections
-
-============================================================
-** SCOPE OF WORK DECOMPOSITION RULE — CRITICAL, NEVER VIOLATE**
-============================================================
-
-When the RFP input contains a Scope of Work breakdown, you MUST:
-
-- PRESERVE each scope item as a SEPARATE, INDEPENDENT entity
-- NEVER merge, collapse, or summarize multiple scope items into one paragraph
-- Copy EVERY sub-detail for EACH item exactly as provided in the input
-- Present each scope item with its own label using the EXACT name from the RFP
-- Preserve the original numbering from the RFP
-
-**SCOPE SOURCE RESTRICTION — CRITICAL:**
-Scope Items must come ONLY from what is labeled as Scope of Work in the input.
-DO NOT take items from "Priorities," "Goals," "Key Focus Areas," "Other Priorities,"
-"Background," or "Introduction" sections and present them as Scope Items.
-Those items belong in the Purpose narrative or Buyer Priorities — never as Scope Items.
-
-Wrong (DO NOT DO):
-Inventing scope items or pulling from priorities/goals sections.
-
-Correct:
-Use ONLY the scope items present in the input's "Scope of Work" section.
-If the input has 9 scope items, output all 9. If it has 5, output all 5.
-Never add, remove, rename, or merge scope items.
-
-============================================================
-**SECTION-SPECIFIC INSTRUCTIONS**
-============================================================
-
-### Section 1: Purpose of the RFP
-
-**Content to Include:**
-- Why the RFP was issued (explicit purpose statements)
-- Problems being solved or needs being addressed
-- Strategic goals and desired outcomes
-- Project scope and deliverables — presented individually per the Scope Decomposition Rule
-- Expected impact or benefits
-- Context that explains the procurement decision
-- Buyer Priorities & Win Themes (minimum 3, maximum 10 bullets)
-- Key Phrases to Echo in Responses (minimum 3, maximum 15 verbatim quotes)
-
-**Content to EXCLUDE:**
-- Submission deadlines, contacts, or procedures
-- Proposal formatting requirements
-- Company background information
-- How to submit or what forms are needed
-
-**Format:**
-Write the main purpose as flowing paragraphs.
-Then present the Scope of Work items individually (one labeled block per item).
-Then add Buyer Priorities and Key Phrases as bullet lists.
-
----
-
-### Section 2: Company Background
-
-**Primary Source:** RFP company text
-**Secondary Source:** Web snippets (only verified, relevant details)
-
-**Must Include All Available Information On:**
-- Full legal name and common names/abbreviations
-- Organization type and structure
-- Founding year and history
-- Headquarters and locations
-- Ownership structure
-- Size (employees, budget, facilities)
-- Core products, services, or offerings
-- Industries and markets served
-- Mission, vision, values if stated
-- Major clients or partners
-- Strategic initiatives or focus areas
-- Awards, certifications, recognition
-- Market position or competitive standing
-- Recent developments or changes
-
-**Web Snippets Usage:**
-- Use web data to ENHANCE, not replace, RFP information
-- Note web-sourced additions: "From web sources: [detail]"
-- Note unverified single-source data: "Unverified from single web source: [detail]"
-- Note any conflicts: "RFP states [X], web sources indicate [Y]"
-
-**Format:** Comprehensive paragraphs with blank lines between them.
-
----
-
-### Section 3: Submission Details & Requirements
-
-**THIS IS THE MOST CRITICAL ADMINISTRATIVE SECTION - MISS NOTHING**
-
-**Extract EVERY SINGLE:**
-- All deadlines (exact dates, times, timezones)
-- All contact information (names, titles, emails, phones, addresses)
-- Submission method and location
-- Required format (file type, copies, binding, labeling)
-- Every mandatory form or document by exact name
-- Every eligibility requirement or prerequisite
-- Every proposal content requirement (sections, page limits, formatting)
-- Every evaluation criterion with point value or weight
-- Every special instruction or condition
-- Every compliance requirement
-- All procedural notes including fine print, appendices, scattered notes
-
-**Format:**
-- Exhaustive bullet list
-- Exact RFP wording wherever possible
-- Sub-bullets for multi-part requirements
-- Minimum 30 items for standard RFPs; 60-100+ for complex ones
-
----
-
-### Section 4: What It Will Take to Win This Pitch
-
-**THIS IS A STRATEGIC ANALYSIS SECTION — NOT AN EXTRACTION SECTION**
-
-Analyze the RFP to give the responding agency a clear strategic roadmap for winning.
-Base every element on evidence from the input — no hallucinations, but sharp analytical
-conclusions are expected and required. Do not write generic advice that could apply to
-any RFP. Every point must be grounded in specific evidence from this RFP.
-
-**YOU MUST PRODUCE ALL SIX SUB-SECTIONS. DO NOT SKIP ANY.**
-
----
-
-**4.1 Core Problem**
-What is the client's single biggest pain point or challenge driving this RFP?
-
-- Identify the central problem or strategic need driving the procurement
-- Look for: pain points, gaps, transitions, failures, pressing needs, governance pivots
-- Go beyond the surface — synthesize what the RFP reveals about WHY this is being issued NOW
-- Write 3-5 direct, specific sentences grounded in RFP evidence
-- Do NOT write generic statements like "they need better marketing" — be specific
-
----
-
-**4.2 Key Evaluation Criteria**
-How are they scoring proposals and what do the weights reveal?
-
-- List every evaluation criterion with its EXACT point value or weight, ranked highest to lowest
-- After the list, write 3-4 sentences interpreting the scoring structure strategically:
-  What does it reveal about the client's true priorities?
-  Where should a proposal invest the most effort?
-  What would be a fatal mistake given the scoring?
-- If no formal scoring exists, identify the strongest implied priorities from repeated RFP language
-
----
-
-**4.3 Mandatory Requirements**
-What is absolutely necessary to avoid disqualification?
-
-- List every hard requirement that would disqualify a non-compliant proposal
-- Use the mandatory language flags extracted from the RFP (must, shall, required, mandatory)
-- Include: required forms, signatures, deadlines, submission formats, certifications,
-  minimum qualifications, must-have documents
-- Distinguish clearly: mark "DISQUALIFYING" for hard cutoffs vs "PENALIZED" for point deductions
-- Format as a compliance checklist with exact RFP language
----
-
-**4.4 Winning Differentiators**
-What would make one proposal meaningfully stand out?
-
-- Identify 5-7 specific differentiators tied directly to RFP evidence
-- These must be concrete — not generic advice like "be creative"
-- Look for: repeated themes, high-weighted criteria, emotionally loaded language,
-  underserved needs, specific capabilities they seem to be searching for,
-  things they mention with urgency or frequency
-- For each differentiator, provide:
-  * The differentiator (named clearly)
-  * WHY it matters — cite specific RFP language or scoring evidence
-  * HOW a proposal should demonstrate it
-- Format as a numbered list
-
----
-
-**4.5 Risk Analysis**
-What are the top 3 risks for a responding agency on this project?
-
-For each risk:
-* Risk name (clearly stated in 3-7 words)
-* Evidence: specific RFP language or situation that signals this risk
-* Impact: what goes wrong if this risk materializes
-* Mitigation: how to address it proactively in the proposal
-
-Format: Risk 1, Risk 2, Risk 3 with labeled sub-bullets for each.
-
----
-
-**4.6 Hot Buttons**
-What are the client's highest-priority themes?
-
-- Identify 4-6 hot button themes: topics, values, or outcomes the client mentions
-  with the most frequency, urgency, or emotional weight
-- These are the things that, if addressed powerfully, create the strongest connection
-  with evaluators
-- For each hot button:
-  * Name it (2-5 words)
-  * Evidence: quote or reference from the RFP showing why it's a hot button
-  * Proposal guidance: one specific sentence on how to address it to score maximum points
-- Format as a labeled list
-
----
-
-**SECTION 4 FORMAT AND QUALITY STANDARDS:**
-- All 6 sub-sections present and clearly labeled 4.1 through 4.6
-- Every claim grounded in specific RFP evidence — not generic advice
-- Direct, confident, strategic language throughout
-- If evidence is limited, note what IS available and give the best analytical conclusion
-
-============================================================
-**OUTPUT FORMAT**
-============================================================
-
-**Section 1: Purpose of the RFP**
-[Comprehensive explanation in flowing paragraphs.]
-
-**Scope of Work — Individual Breakdown:**
-
-**Scope Item 1: [Exact name from RFP]**
-- [Exact sub-detail verbatim]
-- [All sub-details]
-
-**Scope Item 2: [Exact name from RFP]**
-- [Exact sub-detail verbatim]
-- [All sub-details]
-
-[Continue for ALL scope items — never merge, never skip, never invent]
-
-**Buyer Priorities & Win Themes:**
-- [Priority 1]
-- [Priority 2]
-- [Continue, minimum 3, maximum 10]
-
-**Key Phrases to Echo in Responses:**
-- "[Exact verbatim quote 1]"
-- "[Exact verbatim quote 2]"
-- [Continue, minimum 3, maximum 15]
-
----
-
-**Section 2: Company Background**
-[Complete company profile in flowing paragraphs.]
-
----
-
-**Section 3: Submission Details & Requirements**
-[Exhaustive bullet list.]
-
-- [Requirement 1]
-- [Requirement 2]
-- [Continue for ALL requirements]
-
----
-
-**Section 4: What It Will Take to Win This Pitch**
-
-**4.1 Core Problem**
-[3-5 specific sentences grounded in this RFP's evidence]
-
-**4.2 Key Evaluation Criteria**
-[Ranked list with point values]
-[3-4 sentence strategic interpretation]
-
-**4.3 Mandatory Requirements**
-- [DISQUALIFYING] [Requirement verbatim]
-- [PENALIZED] [Requirement verbatim]
-- [Continue for all mandatory items]
-
-**4.4 Winning Differentiators**
-1. [Differentiator name] — Why it matters: [RFP evidence]. How to demonstrate: [specific guidance]
-2. [Continue for 5-7 items]
-
-**4.5 Risk Analysis**
-
-Risk 1: [Name]
-- Evidence: [Specific RFP language or situation]
-- Impact: [What goes wrong]
-- Mitigation: [How to address in proposal]
-
-Risk 2: [Name]
-- Evidence: [Specific RFP language or situation]
-- Impact: [What goes wrong]
-- Mitigation: [How to address in proposal]
-
-Risk 3: [Name]
-- Evidence: [Specific RFP language or situation]
-- Impact: [What goes wrong]
-- Mitigation: [How to address in proposal]
-
-**4.6 Hot Buttons**
-- [Hot Button Name]: Evidence: [RFP quote/reference]. Proposal guidance: [specific sentence]
-- [Continue for 4-6 items]
-
-============================================================
-**FINAL VERIFICATION CHECKLIST**
-============================================================
-
-Before submitting, verify:
-- [ ] No information added beyond the sources
-- [ ] All important details from both RFP and web included
-- [ ] All dates, numbers, names match sources exactly
-- [ ] Conflicting information is noted, not merged
-- [ ] Scope of Work items are individually listed — sourced ONLY from the Scope section
-- [ ] Scope item count matches what was in the input (no items added, removed, or merged)
-- [ ] Section 3 is exhaustive (every submission detail included)
-- [ ] Section 4 contains ALL SIX sub-sections (4.1 through 4.6)
-- [ ] Section 4.3 distinguishes DISQUALIFYING from PENALIZED requirements
-- [ ] Section 4.4 has 5-7 differentiators with RFP evidence for each
-- [ ] Section 4.5 has exactly 3 risks with Evidence, Impact, and Mitigation for each
-- [ ] Section 4.6 has 4-6 hot buttons with RFP evidence and proposal guidance for each
-- [ ] No generic or boilerplate language in Section 4 — every claim tied to this specific RFP
-
-============================================================
-**SOURCE MATERIALS**
-============================================================
-
-RFP Company Description:
-\"\"\"{rfp_company_text}\"\"\"
-
-Web Search Snippets:
-\"\"\"{combined_snippets}\"\"\"
-"""
-
+    prompt = summary_format_prompt(rfp_company_text, combined_snippets)
+    
     system_prompt = (
         "You are a meticulous senior RFP analyst and strategy consultant who produces "
         "structured four-section analysis briefs. You extract and organize information with "
@@ -991,84 +100,17 @@ Web Search Snippets:
         "Your output is comprehensive, accurate, and properly formatted for any RFP document."
     )
 
-    return chat_model(
-        model="gpt-4o-mini",
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        temperature=0.5,
-        max_tokens=5000
-    )
+    client = get_llm_client(provider)
+    content = client.complete(prompt=prompt, system=system_prompt)
+    return content
 
-def search_with_serpapi(query: str):
-    url = "https://serpapi.com/search"
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": SERPAPI_KEY
-    }
-    res = requests.get(url, params=params)
-    data = res.json()
-
-    results = []
-    if "organic_results" in data:
-        for item in data["organic_results"][:5]:
-            results.append({
-                "title": item.get("title"),
-                "link": item.get("link"),
-                "snippet": item.get("snippet")
-            })
-    return results
-
-def extract_questions_with_llm(pdf_text: str) -> dict:
-    prompt = f"""
-        You are an RFP Proposal Response Extraction Specialist.
-
-        Extract ONLY the **questions that require the vendor to write a narrative answer** in the proposal.
-
-        Must Include:
-        - “Please explain…”
-        - “Describe…”
-        - “Provide details…”
-        - “How will you…”
-        - “What is your approach…”
-        - Response instructions inside Proposal Requirements sections
-
-        Must NOT Include:
-        - Any operational capabilities explanations
-        - Any vendor qualifications like “Vendor must have…”
-        - Any instructions not requiring a written answer
-        - Submission/admin details
-        - Repetitive generic requirements
-
-        Mandatory Formatting Rules:
-        - Group by correct RFP sections
-        - Only include sections that contain QUESTIONS
-        - Number questions sequentially inside each section:
-        Example: 1.1, 1.2, 1.3 … then 2.1, 2.2 …
-        - Questions MUST be **full sentences** ending with a '?'
-
-        Required JSON Output ONLY:
-        {{
-        "1": {{
-            "section": "Section Title",
-            "questions": [
-            "1.1 Actual question text?",
-            "1.2 Another question?"
-            ]
-        }}
-        }}
-
-        Source RFP Text:
-        \"\"\"{pdf_text}\"\"\"
-        """
-
-    content = chat_model(
-        model="gpt-4o-mini",
-        system_prompt="Return ONLY strict valid JSON. No markdown. No commentary.",
-        user_prompt=prompt,
-        temperature=0,
-        max_tokens=3000
-    )
+def extract_questions_with_llm(pdf_text: str, provider: str):
+    
+    prompt = question_prompt(pdf_text)
+    system_prompt = "Return ONLY strict valid JSON. No markdown. No commentary."
+    client = get_llm_client(provider)
+    content = client.complete(prompt=prompt, system=system_prompt)
+    print("Raw LLM output for question extraction:", content)
 
     content = content.strip()
     content = content.replace("```json", "").replace("```", "").strip()
@@ -1107,11 +149,12 @@ def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
     Retrieve RFP-specific chunks from Pinecone using file_id metadata filter.
     """
     try:
-        embedding = client.embeddings.create(
-            input=[question],
-            model="text-embedding-3-small"
-        ).data[0].embedding
-
+        # embedding = client.embeddings.create(
+        #     input=[question],
+        #     model="text-embedding-3-small"
+        # ).data[0].embedding
+        embedding = OpenAIEmbeddingClient().embed(question)
+        
         results = index.query(
             vector=embedding,
             top_k=top_k,
@@ -1171,300 +214,13 @@ def _sanitize_short_name(short_name: str) -> str:
     return name
 
 
-# def generate_answer_with_context(
-#     question: str,
-#     context: str,
-#     short_name: str,
-#     existing_answer: str = None,
-#     edit_instruction: str = None
-# ) -> str:
-#     """
-#     Generate a new proposal response OR apply a targeted edit to an existing one.
-
-#     Parameters
-#     ----------
-#     question          : The RFP question being answered.
-#     context           : RAG-retrieved context (RFP chunks + Keystone company data).
-#     short_name        : Human-readable client name, e.g. "Duluth" or "McLean".
-#                         Sanitized internally — UUID/hash values are rejected.
-#     existing_answer   : Previously generated answer. Required for edit mode.
-#     edit_instruction  : The specific change the user wants applied. Required for edit mode.
-#                         Both existing_answer AND edit_instruction must be provided
-#                         to activate edit mode. If either is missing, generate mode runs.
-#     genral_rule       : Do not responce with 'ok' or 'sure' or 'generating' or 'here is your responce' 
-#                         any self made or llm generated keywords in the starting of the answer generated 
-#                         and strictly use the keystone company data which is been provided with rfp chunks
-#                         here use all the keystone data which is 
-#     """
-
-#     # Sanitize client name before it ever touches the prompt
-#     short_name = _sanitize_short_name(short_name)
-
-#     # Determine mode
-#     is_edit_mode = bool(
-#         existing_answer and existing_answer.strip()
-#         and edit_instruction and edit_instruction.strip()
-#     )
-
-#     # ----------------------------------------------------------------
-#     # Mode block — injected into the prompt
-#     # ----------------------------------------------------------------
-#     if is_edit_mode:
-#         mode_block = f"""
-#         ----------------------------------------------------------------
-
-#         ### ⚠️ MODE: SURGICAL EDIT — READ BEFORE DOING ANYTHING ELSE
-
-#         You are NOT generating a new response from scratch.
-#         You are applying ONE SPECIFIC CHANGE to an existing response.
-
-#         EXISTING RESPONSE (this is your base — preserve everything in it):
-#         \"\"\"
-#         {existing_answer}
-#         \"\"\"
-
-#         EDIT INSTRUCTION (apply ONLY this — nothing else):
-#         \"\"\"
-#         {edit_instruction}
-#         \"\"\"
-
-#         SURGICAL EDIT RULES (MANDATORY — NO EXCEPTIONS):
-#         1. Treat the existing response as final and correct except for the
-#            one thing the edit instruction targets.
-#         2. Locate the exact sentence, phrase, or section the instruction refers to.
-#            Apply the change there and ONLY there.
-#         3. Every other sentence in the existing response must be copied
-#            verbatim — unchanged word for word.
-#         4. Do NOT rewrite, reorder, expand, or condense any part of the
-#            response that was not explicitly mentioned in the edit instruction.
-#         5. Do NOT change the tone, voice, or structure of unaffected sections.
-#         6. Do NOT add new paragraphs, bullet points, or sections unless the
-#            edit instruction explicitly asks for them.
-#         7. If the edit instruction says "add to [sentence X]", find that
-#            exact sentence and extend it — do not alter surrounding text.
-#         8. If the edit instruction says "remove [element X]", delete only
-#            that element — do not modify surrounding sentences.
-#         9. If the edit instruction says "change [X] to [Y]", swap only
-#            that element — do not touch anything else.
-#         10. Return the COMPLETE updated response — not just the edited portion.
-#         11. If the edit instruction is ambiguous, apply the most conservative
-#             interpretation (smallest possible change).
-
-#         WHAT YOU MUST NOT DO IN EDIT MODE:
-#         - Do NOT produce a completely rewritten version of the answer.
-#         - Do NOT use the edit as an excuse to improve other sentences.
-#         - Do NOT silently remove content that wasn't mentioned.
-#         - Do NOT change the client name, "we/our" voice, or formatting
-#           in sections that were not part of the edit instruction.
-#         """
-#     else:
-#         mode_block = """
-#         ----------------------------------------------------------------
-
-#         ### MODE: GENERATE NEW RESPONSE
-
-#         Generate a complete, original response to the question below
-#         using the provided context and all rules that follow.
-#         """
-
-#     # ----------------------------------------------------------------
-#     # Full prompt
-#     # ----------------------------------------------------------------
-#     prompt = f"""
-#         You are an expert proposal writer producing responses on behalf of an agency.
-#         You are not a neutral AI assistant.
-#         You are acting as the agency itself.
-
-#         Your job is to generate responses that reflect how this agency THINKS,
-#         TAKES POSITIONS, and COMMITS — not just how it sounds.
-
-#         {mode_block}
-
-#         ----------------------------------------------------------------
-
-#         ### ⚠️ CLIENT NAMING RULE (MANDATORY — HIGHEST PRIORITY)
-
-#         The client's name for this proposal is: "{short_name}"
-
-#         - Refer to the issuer EXCLUSIVELY as "{short_name}" throughout the response.
-#         - NEVER use a filename, document ID, UUID, or alphanumeric code as a name.
-#         - NEVER use strings like "24Ad8E0C", "24AA07", "RFP-2024", or similar
-#           identifiers as a client name. These are document reference numbers, not names.
-#         - NEVER use "the client" as a substitute for the client's name.
-#         - If you are unsure of the proper name, use "{short_name}" exactly as given.
-
-#         ----------------------------------------------------------------
-
-#         ###  AGENCY BEHAVIORAL AUTHORITY (MANDATORY)
-
-#         The context may include statements that define the agency's identity and posture.
-#         These statements define WHAT YOU ARE ALLOWED TO DO intellectually.
-
-#         If present, interpret them as follows:
-
-#         - Challenger to client thinking:
-#         You are permitted and expected to question assumptions,
-#         reframe the problem, and introduce alternative interpretations.
-#         You must not default to agreement-driven or deferential writing.
-
-#         - Collaborator with client teams:
-#         Write from a shared-ownership posture.
-#         Use inclusive framing that signals partnership and joint accountability.
-
-#         - Operator responsible for execution:
-#         Anchor responses in delivery reality.
-#         Signal ownership, accountability, and operational responsibility.
-#         Do not over-distance yourself into purely advisory language.
-
-#         - Authority with a strong point of view:
-#         Make clear, decisive recommendations.
-#         Avoid hedging, equivocation, or overly neutral analysis.
-
-#         These are BEHAVIOR RULES, not tone preferences.
-#         They govern how you reason, what you assert, and what positions you take.
-
-#         ----------------------------------------------------------------
-
-#         ###  INTERPRETATION RULES (MANDATORY)
-
-#         The provided context may include:
-#         - Agency tone, voice, and writing preferences
-#         - Company facts, experience, and capabilities
-#         - RFP-specific instructions or references
-
-#         You MUST interpret the context as follows:
-
-#         - Any statements describing tone, voice, style, writing preferences,
-#         brand personality, or do/don't rules are **STYLE RULES**.
-#         These MUST be followed exactly and consistently.
-
-#         - Company details, services, experience, certifications,
-#         and processes are **FACTUAL CONTENT**.
-#         Use these strictly for accuracy.
-
-#         - If there is any conflict:
-#         - STYLE RULES override wording and phrasing.
-#         - FACTUAL CONTENT overrides assumptions.
-#         - Never invent or infer missing facts.
-
-#         ----------------------------------------------------------------
-
-#         ###  KEYSTONE DATA RULE (MANDATORY)
-
-#         - If the context includes a section titled "Company Information",
-#         use it as the authoritative source for factual company details
-#         (e.g., legal name, certifications, scale, experience).
-
-#         - Incorporate this information naturally when relevant.
-#         - Do NOT hallucinate or supplement missing company information.
-
-#         ----------------------------------------------------------------
-
-#         ###  RFP USAGE RULE (MANDATORY)
-
-#         - Always anchor the response directly to the provided RFP context.
-#         - Use the issuer's exact requirements, constraints, and expectations.
-#         - Answers must be specific to what {short_name} is asking.
-#         - Do not produce generic or reusable boilerplate responses.
-
-
-#         ----------------------------------------------------------------
-
-#         ###  VOICE & POINT OF VIEW (MANDATORY)
-
-#         - Use "we" or "our".
-#         - Never use "I".
-#         - Never refer to the agency in the third person.
-
-#         ----------------------------------------------------------------
-
-#         ###  PRICING RULES (MANDATORY)
-
-#         - The agency uses flat-rate pricing only.
-#         - Never mention hourly rates, per-hour billing, or time-based pricing.
-#         - If the context references hourly pricing, rewrite it into a flat-rate model
-#         without inventing specific prices.
-
-#         ----------------------------------------------------------------
-
-#         ###  SUBCONTRACTOR / VENDOR MODEL (MANDATORY)
-
-#         - Services are delivered through subcontractors and external vendors.
-#         - Reflect this in staffing, delivery, and execution descriptions.
-#         - Never imply work is delivered solely by in-house full-time staff.
-
-#         ----------------------------------------------------------------
-
-#         ###  ACCURACY RULE
-
-#         - Use ONLY information present in the provided context.
-#         - If required information is missing, write:
-#         "We do not have enough information to provide that detail
-#         based on the available context and company data."
-
-#         ----------------------------------------------------------------
-
-#         ###  TONE & STYLE (MANDATORY)
-
-#         - Follow the agency's voice as described in the context.
-#         - Professional, concise, confident.
-#         - No vague marketing language.
-#         - No generic AI phrasing.
-
-#         ----------------------------------------------------------------
-
-#         ###  CONCISION RULES
-
-#         - Short, direct sentences.
-#         - Active voice.
-#         - No filler or hedging language.
-
-#         ----------------------------------------------------------------
-
-#         ###  FORMATTING RULES
-
-#         - Do not use bullet points unless explicitly required by the RFP.
-#         - Do not reference "context" or "question" in the final response.
-#         - Plain text only — no markdown bold, headers, or asterisks.
-
-#         ----------------------------------------------------------------
-
-#         Context:
-#         {context}
-
-#         Question:
-#         {question}
-
-#         Final Answer:
-#     """
-
-#     try:
-#         content = chat_model(
-#         model="gpt-4o-mini",
-#         system_prompt=(
-#             "You are a professional RFP response specialist who strictly follows "
-#             "behavioral authority, factual accuracy, and style rules. "
-#             "You NEVER use document IDs, UUIDs, filenames, or alphanumeric reference "
-#             "codes as client names — only the human-readable name explicitly provided. "
-#             "In edit mode, you apply ONLY the requested change and preserve all other "
-#             "existing content word for word."
-#         ),
-#             user_prompt=prompt,
-#             temperature=0.2,
-#             max_tokens=1600
-#         )
-#         return content
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
-      
-
 def generate_answer_with_context(
     question: str,
     context: str,
     short_name: str,
     existing_answer: str = None,
-    edit_instruction: str = None
+    edit_instruction: str = None,
+    provider: str = "openai"
 ) -> str:
     """
     Generate a new proposal response OR apply a targeted edit to an existing one.
@@ -1489,11 +245,6 @@ def generate_answer_with_context(
         existing_answer and existing_answer.strip()
         and edit_instruction and edit_instruction.strip()
     )
-
-    # ----------------------------------------------------------------
-    # NEW CHANGE #2 — Detect formatting signals from the existing answer
-    # so they are preserved across edit versions.
-    # ----------------------------------------------------------------
     formatting_signals = []
     if is_edit_mode and existing_answer:
         lines = existing_answer.strip().splitlines()
@@ -1518,258 +269,15 @@ def generate_answer_with_context(
             formatting_signals.append(f"- The existing answer has {paragraph_count + 1} paragraphs separated by blank lines. PRESERVE these paragraph breaks throughout the edited version.")
 
     formatting_carry_forward = (
-        "\n        ### ⚠️ FORMATTING CARRY-FORWARD (MANDATORY IN EDIT MODE)\n\n"
+        "\n        ### FORMATTING CARRY-FORWARD (MANDATORY IN EDIT MODE)\n\n"
         + "\n".join(f"        {s}" for s in formatting_signals)
         + "\n"
     ) if formatting_signals else ""
 
-    # ----------------------------------------------------------------
-    # Mode block — injected into the prompt
-    # ----------------------------------------------------------------
-    if is_edit_mode:
-        mode_block = f"""
-        ----------------------------------------------------------------
 
-        ### ⚠️ MODE: SURGICAL EDIT — READ BEFORE DOING ANYTHING ELSE
-
-        You are NOT generating a new response from scratch.
-        You are applying ONE SPECIFIC CHANGE to an existing response.
-
-        EXISTING RESPONSE (this is your base — preserve everything in it):
-        \"\"\"
-        {existing_answer}
-        \"\"\"
-
-        EDIT INSTRUCTION (apply ONLY this — nothing else):
-        \"\"\"
-        {edit_instruction}
-        \"\"\"
-
-        SURGICAL EDIT RULES (MANDATORY — NO EXCEPTIONS):
-        1. Treat the existing response as final and correct except for the
-           one thing the edit instruction targets.
-        2. Locate the exact sentence, phrase, or section the instruction refers to.
-           Apply the change there and ONLY there.
-        3. Every other sentence in the existing response must be copied
-           verbatim — unchanged word for word.
-        4. Do NOT rewrite, reorder, expand, or condense any part of the
-           response that was not explicitly mentioned in the edit instruction.
-        5. Do NOT change the tone, voice, or structure of unaffected sections.
-        6. Do NOT add new paragraphs, bullet points, or sections unless the
-           edit instruction explicitly asks for them.
-        7. If the edit instruction says "add to [sentence X]", find that
-           exact sentence and extend it — do not alter surrounding text.
-        8. If the edit instruction says "remove [element X]", delete only
-           that element — do not modify surrounding sentences.
-        9. If the edit instruction says "change [X] to [Y]", swap only
-           that element — do not touch anything else.
-        10. Return the COMPLETE updated response — not just the edited portion.
-        11. If the edit instruction is ambiguous, apply the most conservative
-            interpretation (smallest possible change).
-
-        WHAT YOU MUST NOT DO IN EDIT MODE:
-        - Do NOT produce a completely rewritten version of the answer.
-        - Do NOT use the edit as an excuse to improve other sentences.
-        - Do NOT silently remove content that wasn't mentioned.
-        - Do NOT change the client name, "we/our" voice, or formatting
-          in sections that were not part of the edit instruction.
-
-        {formatting_carry_forward}
-        """
-    else:
-        mode_block = """
-        ----------------------------------------------------------------
-
-        ### MODE: GENERATE NEW RESPONSE
-
-        Generate a complete, original response to the question below
-        using the provided context and all rules that follow.
-        """
-
-    # ----------------------------------------------------------------
-    # Full prompt
-    # ----------------------------------------------------------------
-    prompt = f"""
-        You are an expert proposal writer producing responses on behalf of an agency.
-        You are not a neutral AI assistant.
-        You are acting as the agency itself.
-
-        Your job is to generate responses that reflect how this agency THINKS,
-        TAKES POSITIONS, and COMMITS — not just how it sounds.
-
-        {mode_block}
-
-        ----------------------------------------------------------------
-
-        ### ⚠️ CLIENT NAMING RULE (MANDATORY — HIGHEST PRIORITY)
-
-        The client's name for this proposal is: "{short_name}"
-
-        - Refer to the issuer EXCLUSIVELY as "{short_name}" throughout the response.
-        - NEVER use a filename, document ID, UUID, or alphanumeric code as a name.
-        - NEVER use strings like "24Ad8E0C", "24AA07", "RFP-2024", or similar
-          identifiers as a client name. These are document reference numbers, not names.
-        - NEVER use "the client" as a substitute for the client's name.
-        - If you are unsure of the proper name, use "{short_name}" exactly as given.
-
-        ----------------------------------------------------------------
-
-        ###  AGENCY BEHAVIORAL AUTHORITY (MANDATORY)
-
-        The context may include statements that define the agency's identity and posture.
-        These statements define WHAT YOU ARE ALLOWED TO DO intellectually.
-
-        If present, interpret them as follows:
-
-        - Challenger to client thinking:
-        You are permitted and expected to question assumptions,
-        reframe the problem, and introduce alternative interpretations.
-        You must not default to agreement-driven or deferential writing.
-
-        - Collaborator with client teams:
-        Write from a shared-ownership posture.
-        Use inclusive framing that signals partnership and joint accountability.
-
-        - Operator responsible for execution:
-        Anchor responses in delivery reality.
-        Signal ownership, accountability, and operational responsibility.
-        Do not over-distance yourself into purely advisory language.
-
-        - Authority with a strong point of view:
-        Make clear, decisive recommendations.
-        Avoid hedging, equivocation, or overly neutral analysis.
-
-        These are BEHAVIOR RULES, not tone preferences.
-        They govern how you reason, what you assert, and what positions you take.
-
-        ----------------------------------------------------------------
-
-        ###  INTERPRETATION RULES (MANDATORY)
-
-        The provided context may include:
-        - Agency tone, voice, and writing preferences
-        - Company facts, experience, and capabilities
-        - RFP-specific instructions or references
-
-        You MUST interpret the context as follows:
-
-        - Any statements describing tone, voice, style, writing preferences,
-        brand personality, or do/don't rules are **STYLE RULES**.
-        These MUST be followed exactly and consistently.
-
-        - Company details, services, experience, certifications,
-        and processes are **FACTUAL CONTENT**.
-        Use these strictly for accuracy.
-
-        - If there is any conflict:
-        - STYLE RULES override wording and phrasing.
-        - FACTUAL CONTENT overrides assumptions.
-        - Never invent or infer missing facts.
-
-        ----------------------------------------------------------------
-
-        ###  KEYSTONE DATA RULE (MANDATORY)
-
-        - If the context includes a section titled "Company Information",
-        use it as the authoritative source for factual company details
-        (e.g., legal name, certifications, scale, experience).
-
-        - Incorporate this information naturally when relevant.
-        - Do NOT hallucinate or supplement missing company information.
-
-        ----------------------------------------------------------------
-
-        ###  RFP USAGE RULE (MANDATORY)
-
-        - Always anchor the response directly to the provided RFP context.
-        - Use the issuer's exact requirements, constraints, and expectations.
-        - Answers must be specific to what {short_name} is asking.
-        - Do not produce generic or reusable boilerplate responses.
-
-        ----------------------------------------------------------------
-
-        ###  VOICE & POINT OF VIEW (MANDATORY)
-
-        - Use "we" or "our".
-        - Never use "I".
-        - Never refer to the agency in the third person.
-
-        ----------------------------------------------------------------
-
-        ###  PRICING RULES (MANDATORY)
-
-        - The agency uses flat-rate pricing only.
-        - Never mention hourly rates, per-hour billing, or time-based pricing.
-        - If the context references hourly pricing, rewrite it into a flat-rate model
-        without inventing specific prices.
-
-        ----------------------------------------------------------------
-
-        ###  SUBCONTRACTOR / VENDOR MODEL (MANDATORY)
-
-        - Services are delivered through subcontractors and external vendors.
-        - Reflect this in staffing, delivery, and execution descriptions.
-        - Never imply work is delivered solely by in-house full-time staff.
-
-        ----------------------------------------------------------------
-
-        ###  ACCURACY RULE (MANDATORY — UPDATED)
-
-        - Use ONLY information explicitly present in the provided context.
-        - Do NOT invent, infer, extrapolate, or assume any facts not directly
-          stated in the context — especially for specific figures such as budgets,
-          case study outcomes, statistics, timelines, or named projects.
-        - If required information is missing or cannot be confirmed from the
-          provided context, respond with exactly:
-          "Insufficient Information: We do not have enough detail in the available
-          context to accurately answer this question."
-        - It is always better to state insufficient information than to fabricate
-          a plausible-sounding but incorrect answer.
-
-        ----------------------------------------------------------------
-
-        ###  TONE & STYLE (MANDATORY)
-
-        - Follow the agency's voice as described in the context.
-        - Professional, concise, confident.
-        - No vague marketing language.
-        - No generic AI phrasing.
-
-        ----------------------------------------------------------------
-
-        ###  CONCISION RULES
-
-        - Short, direct sentences.
-        - Active voice.
-        - No filler or hedging language.
-
-        ----------------------------------------------------------------
-
-        ###  FORMATTING RULES
-
-        - Do not use bullet points unless explicitly required by the RFP
-          or carried forward from the existing answer in edit mode.
-        - Do not reference "context" or "question" in the final response.
-        - Plain text only — no markdown bold, headers, or asterisks.
-        - NEVER begin the response with affirmations such as "OK", "Sure",
-          "Certainly", "Of course", "Absolutely", or any similar opener.
-          Begin directly with the substantive response content.
-
-        ----------------------------------------------------------------
-
-        Context:
-        {context}
-
-        Question:
-        {question}
-
-        Final Answer:
-    """
-
-    try:
-        content = chat_model(
-            model="gpt-4o-mini",
-            system_prompt=(
+    mode_block = mode_block_prompt(is_edit_mode, existing_answer, edit_instruction, formatting_carry_forward)
+    prompt = answer_generation_prompt(question, context, short_name, mode_block)
+    system_prompt=(
                 "You are a professional RFP response specialist who strictly follows "
                 "behavioral authority, factual accuracy, and style rules. "
                 "You NEVER use document IDs, UUIDs, filenames, or alphanumeric reference "
@@ -1781,48 +289,22 @@ def generate_answer_with_context(
                 "You NEVER fabricate specific facts, figures, budgets, or case study details "
                 "not present in the provided context."
                 # "Make the generaed output responce answer in bullet points and every bullet points should have a blank line space between each bullet points "
-            ),
-            user_prompt=prompt,
-            temperature=0.2,
-            max_tokens=1600
-        )
+            )
+    try:
+        client = get_llm_client(provider)
+        content = client.complete(prompt=prompt, system=system_prompt)
         return content
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
 
-def analyze_answer_score_only(question_text: str, answer_text: str) -> float:
-    prompt = f"""
-You are acting as a strict RFP evaluator.
+def analyze_answer_score_only(question_text: str, answer_text: str, provider: str = "openai") -> float:
+    prompt = generate_score_prompt(question_text, answer_text)
 
-Your task:
-- Carefully read the question and the provided answer.
-- Judge how well the answer directly addresses the question.
-- Give a score from 0.0 to 10.0 based on relevance, clarity, and completeness.
-
-Scoring Rules:
-- 0.0 → No relevance or completely incorrect
-- 1.0-3.0 → Very poor / barely addresses the question
-- 4.0-6.0 → Partially addresses the question, with gaps
-- 7.0-8.5 → Good, mostly complete but could be stronger
-- 9.0-10.0 → Excellent, fully relevant and comprehensive
-
- Output Instruction:
-Return ONLY the numeric score as a float (e.g., `7.5`, `9.0`, `0.0`). 
-Do NOT include words, labels, or explanations.
-
-Question: {question_text}
-
-Answer: {answer_text}
-    """
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-    )
-
-    score_text = response.choices[0].message.content.strip()
+    system_prompt = "You are a strict RFP evaluator who gives a numeric score based on how well the answer addresses the question. Return ONLY the numeric score as a float from 0.0 to 10.0, with no explanation or text."
+    client = get_llm_client(provider)
+    content = client.complete(prompt=prompt, system=system_prompt)
+    score_text = content.strip()
     try:
         return float(score_text)
     except ValueError:
@@ -1895,24 +377,15 @@ def extract_text_from_file(file_path: str) -> str:
                 ) + "\n" 
     return text.strip()
 
-def get_embedding(text: str):
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
-    )
-    return response.data[0].embedding
 
-def generate_summary(text: str) -> str:
+
+def generate_summary(text: str, provider: str = "openai") -> str:
     """Generate summary of an RFP using LLM."""
     prompt = f"Summarize the following RFP in 3-5 paragraphs:\n\n{text[:8000]}"
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are an RFP summarizer."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return response.choices[0].message.content.strip()
+    client = get_llm_client(provider)
+    system_prompt = "You are an RFP summarizer."
+    content = client.complete(prompt=prompt, system=system_prompt)
+    return content.strip()
 
 
 def get_short_name(filename: str) -> str:
@@ -1926,7 +399,6 @@ def get_short_name(filename: str) -> str:
     name = filename.rsplit('.', 1)[0]
 
     name = name.replace('_', ' ').replace('-', ' ')
-
     tokens = name.split()
 
     noise = {
@@ -2000,8 +472,6 @@ def clean_extracted_text(text: str) -> str:
 
 def get_active_keystone_text(db: Session, admin_id: int) -> str:
     keystone = db.query(KeystoneFile).filter(KeystoneFile.admin_id == admin_id).order_by(KeystoneFile.uploaded_at.desc()).first()
-
-
     if not keystone:
         raise HTTPException(
             status_code=400,
@@ -2029,18 +499,8 @@ def delete_rfp_embeddings(file_id: int):
     try:
         namespace = f"rfp_{file_id}"
 
-        print("Deleting namespace:", namespace)
-
-        # DEBUG: check namespaces before delete
-        # stats_before = index.describe_index_stats()
-        # print("Before delete:", stats_before.get("namespaces", {}))
-
+        # print("Deleting namespace:", namespace)
         index.delete(delete_all=True, namespace=namespace)
-
-        # # DEBUG: check after delete
-        # stats_after = index.describe_index_stats()
-        # print("After delete:", stats_after.get("namespaces", {}))
-
         print(f"Deleted embeddings for {namespace}")
 
     except Exception as e:

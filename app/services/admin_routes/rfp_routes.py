@@ -9,7 +9,7 @@ from app.schemas.schema import (
     GroupedRFPQuestionOut, QuestionOut, QuestionInput)
 from app.models.rfp_models import User, RFPDocument, Reviewer
 from app.api.routes.utils import get_current_user
-from app.utils.admin_function import (
+from app.services.admin_services import (
     process_rfp_file, fetch_file_details,
     filter_question_service, delete_rfp_document_service,
     view_rfp_document_service, add_ques, restore_rfp_doc,
@@ -22,7 +22,8 @@ async def search_related_summary(
     file: UploadFile = File(...),
     project_name: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    provider: str = "openai"
 ):
     if current_user.role != "admin":
         raise HTTPException(
@@ -30,7 +31,7 @@ async def search_related_summary(
             detail="Only admins can access summary docs."
         )
     
-    return await process_rfp_file(file, project_name, db, current_user)
+    return await process_rfp_file(file, project_name, db, current_user, provider)
 
 @router.get("/filedetails", response_model=List[FileDetails])
 def get_file_details(

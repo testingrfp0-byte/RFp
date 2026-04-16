@@ -108,9 +108,9 @@ class UserBusinessLogic:
 
         return enhanced_context, sources
 
-    def generate_answer_for_question(self, question_text: str, enhanced_context: str, short_name: str) -> str:
+    def generate_answer_for_question(self, question_text: str, enhanced_context: str, short_name: str, provider: str) -> str:
         """Generate and clean answer"""
-        answer = generate_answer_with_context(question_text, enhanced_context, short_name)
+        answer = generate_answer_with_context(question_text, enhanced_context, short_name, provider)
         return clean_answer(answer)
     
     def update_reviewer_answer(self, reviewer, answer: str):

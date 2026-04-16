@@ -15,28 +15,36 @@ from app.services.llm_services.llm_service import (
     extract_questions_with_llm,
     summarize_results_with_llm,
     generate_search_queries,
-    search_with_serpapi,
-    client,
     parse_rfp_summary,
     clean_extracted_text,
     delete_rfp_embeddings
 )
 from app.config import pc, index, UPLOAD_FOLDER
+from app.core.serpapi.serpapi import search_with_serpapi
+from app.core.llm_client.openai import OpenAIEmbeddingClient
+from pathlib import Path
+from app.services.file_services.file_extracter import extract_text_from_file, SUPPORTED_EXTENSIONS
+
+class RFPExtractionError(Exception):
+    """Raised when file reading or text extraction fails unexpectedly."""
+    pass
 
 async def process_rfp_file(
     file: UploadFile,
     project_name: str,
     db: Session,
-    current_user
+    current_user,
+    provider: str = "openai"
 ):
     try:
-        file_bytes = await file.read()
+        try:
+            file_bytes = await file.read()
+        except Exception as e:
+            raise RFPExtractionError(f"Failed to read uploaded file: {e}") from e
 
         if not file_bytes:
-            raise HTTPException(
-                status_code=400,
-                detail="Uploaded file is empty."
-            )
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        
         file_hash = hashlib.md5(file_bytes).hexdigest()
         existing_rfp = (
             db.query(RFPDocument)
@@ -52,21 +60,44 @@ async def process_rfp_file(
                     "existing_rfp_id": existing_rfp.id
                 }
             )
+        
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         safe_original_name = os.path.basename(file.filename) if file.filename else "uploaded.pdf"
         dummy_filename = f"rfp_{timestamp}.pdf"
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         file_path = os.path.join(UPLOAD_FOLDER, dummy_filename)
 
-        with open(file_path, "wb") as f:
-            f.write(file_bytes)
+        # with open(file_path, "wb") as f:
+        #     f.write(file_bytes)
 
-        rfp_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+        # rfp_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
 
-        if not rfp_text or not rfp_text.strip():
-            return {"error": "PDF text is empty or not readable after extraction."}
+        # if not rfp_text or not rfp_text.strip():
+        #     return {"error": "PDF text is empty or not readable after extraction."}
+        # 1. Read bytes
 
-        rfp_text = clean_extracted_text(rfp_text)
+        # 2. Validate extension
+        original_name = Path(file.filename).name if file.filename else "upload.pdf"
+        ext = Path(original_name).suffix.lower()
+
+        if ext not in SUPPORTED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unsupported file type '{ext}'. "
+                    f"Allowed: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+                )
+            )
+
+        tmp_path = Path(UPLOAD_FOLDER) / f"tmp_{uuid.uuid4().hex}{ext}"
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        try:
+            tmp_path.write_bytes(file_bytes)
+            raw_text: str = await asyncio.to_thread(extract_text_from_file, tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)   
+
+        rfp_text = clean_extracted_text(raw_text)
 
         if not rfp_text.strip():
             return {"error": "PDF text became empty after cleaning (likely non-text document)."}
@@ -90,9 +121,13 @@ async def process_rfp_file(
         db.commit()
         db.refresh(new_rfp)
 
-        search_queries = generate_search_queries(rfp_text)
-        questions_grouped = extract_questions_with_llm(rfp_text)
-        company_rfp_text = extract_company_background_from_rfp(rfp_text)
+        print(f"Processing RFP ID {new_rfp.id} with provider {provider}")
+
+        search_queries = generate_search_queries(rfp_text, provider)
+        # print(f"Generated {len(search_queries)} search queries for RFP ID {new_rfp.id}")
+        questions_grouped = extract_questions_with_llm(rfp_text, provider)
+        # print(f"Extracted questions grouped by section for RFP ID {new_rfp.id}: {questions_grouped.keys()}")
+        company_rfp_text = extract_company_background_from_rfp(rfp_text, provider)
 
         all_snippets = []
         for query in search_queries:
@@ -107,7 +142,8 @@ async def process_rfp_file(
 
         raw_summary = summarize_results_with_llm(
             all_snippets,
-            rfp_company_text=company_rfp_text
+            rfp_company_text=company_rfp_text,
+            provider=provider
         )
         structured_summary = parse_rfp_summary(raw_summary)
 
@@ -140,11 +176,13 @@ async def process_rfp_file(
 
         for i, chunk in enumerate(chunks):
             try:
-                embedding_response = client.embeddings.create(
-                    model="text-embedding-3-small",
-                    input=chunk
-                )
-                embedding_vector = embedding_response.data[0].embedding
+                # embedding_response = client.embeddings.create(
+                #     model="text-embedding-3-small",
+                #     input=chunk
+                # )
+                # embedding_vector = embedding_response.data[0].embedding
+
+                embedding_vector = OpenAIEmbeddingClient().embed(chunk)
 
                 index.upsert([
                     {

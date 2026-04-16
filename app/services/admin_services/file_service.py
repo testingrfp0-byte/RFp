@@ -9,7 +9,7 @@ from app.models.rfp_models import RFPDocument,RFPQuestion
 from app.services.llm_services.llm_service import (
     extract_text_from_file,
     generate_summary,
-    get_embedding
+    # get_embedding
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -17,10 +17,12 @@ from docx.oxml import OxmlElement, ns
 from docx import Document
 from docx.shared import Inches, Pt
 
+from app.core.llm_client.openai import OpenAIEmbeddingClient
+
 import re
 
 
-def upload_documents(files, project_name, category, current_user, db: Session):
+def upload_documents(files, project_name, category, current_user, db: Session, provider: str):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     uploaded_docs = []
 
@@ -60,8 +62,8 @@ def upload_documents(files, project_name, category, current_user, db: Session):
         if not text:
             continue
 
-        summary = generate_summary(text)
-        summary_vector = get_embedding(summary)
+        summary = generate_summary(text, provider)
+        summary_vector = OpenAIEmbeddingClient().embed(summary)
         index.upsert(
             vectors=[(
                 f"summary_{new_doc.id}",
@@ -82,7 +84,8 @@ def upload_documents(files, project_name, category, current_user, db: Session):
         chunks = splitter.split_text(text)
         vectors = []
         for i, chunk in enumerate(chunks):
-            vector = get_embedding(chunk)
+            # vector = get_embedding(chunk)
+            vector = OpenAIEmbeddingClient().embed(chunk)
             vectors.append((
                 f"{new_doc.id}_{i}",
                 vector,
@@ -153,7 +156,8 @@ def upload_background_document(file, project_name, category, current_user, db: S
 
 
     summary = generate_summary(extracted_text)
-    summary_vector = get_embedding(summary)
+    # summary_vector = get_embedding(summary)
+    summary_vector = OpenAIEmbeddingClient().embed(summary)
     index.upsert(
         vectors=[(
             f"clint_background_summaries_{new_doc.id}",
@@ -174,7 +178,8 @@ def upload_background_document(file, project_name, category, current_user, db: S
     chunks = splitter.split_text(extracted_text)
     vectors = []
     for i, chunk in enumerate(chunks):
-        vector = get_embedding(chunk)
+        # vector = get_embedding(chunk)
+        vector = OpenAIEmbeddingClient().embed(chunk)
         vectors.append((
             f"{new_doc.id}_{i}",
             vector,

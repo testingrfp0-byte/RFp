@@ -3,7 +3,7 @@ from app.db.database import get_db
 from app.models.rfp_models import User
 from fastapi import Depends, APIRouter, Form
 from app.api.routes.utils import get_current_user
-from app.utils.admin_function import (
+from app.services.admin_services import (
     get_all_users, get_assigned_users,
     get_user_by_id_service, check_submissions_service,
     get_assign_user_status_service, update_profile_service)

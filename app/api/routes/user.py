@@ -19,9 +19,10 @@ def get_assigned_questions(
 def generate_answers(
     question_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) 
+    current_user: User = Depends(get_current_user),
+    provider: str = "openai" 
 ):
-    return generate_answers_service(db, current_user, question_id)
+    return generate_answers_service(db, current_user, question_id, provider)
 
 @router.get("/answers/{question_id}/versions")
 def get_answer_versions(

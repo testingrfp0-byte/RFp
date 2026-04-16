@@ -21,7 +21,7 @@ def assigned_questions(db: Session, current_user: User) -> List[Dict[str, Any]]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def generate_answers_service(db: Session, current_user: User, question_id: int) -> Dict[str, Any]:
+def generate_answers_service(db: Session, current_user: User, question_id: int, provider: str = "openai") -> Dict[str, Any]:
     """
     Generate AI-powered answer for a specific question
     
@@ -29,13 +29,14 @@ def generate_answers_service(db: Session, current_user: User, question_id: int) 
         db: Database session
         current_user: Currently authenticated user
         question_id: ID of the question to generate answer for
+        provider: LLM provider to use for generation
     
     Returns:
         Generated answer with metadata and sources
     """
     try:
         service = UserService(db)
-        return service.generate_answer(current_user, question_id)
+        return service.generate_answer(current_user, question_id, provider)
     except HTTPException:
         raise
     except Exception as e:

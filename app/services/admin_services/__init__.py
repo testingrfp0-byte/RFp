@@ -1,14 +1,3 @@
-"""
-Service Structure:
-rfp_service.py: RFP document processing and management
-question_service.py: Question filtering, creation, editing, deletion
-reviewer_service.py: Reviewer assignment, removal, reassignment
-user_service.py: User management and profile operations
-keystone_service.py: Keystone data management
-scoring_service.py: Answer scoring and analysis
-file_service.py: File upload and document management
-"""
-
 from app.services.admin_services.rfp_service import (
     process_rfp_file,
     fetch_file_details,

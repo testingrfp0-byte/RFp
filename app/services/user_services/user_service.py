@@ -32,7 +32,7 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    def generate_answer(self, current_user: User, question_id: int) -> Dict[str, Any]:
+    def generate_answer(self, current_user: User, question_id: int, provider: str = "openai") -> Dict[str, Any]:
         """Generate answer for a specific question"""
         try:
             assignment = self.repository.get_question_assignment(
@@ -63,7 +63,8 @@ class UserService:
             answer = self.business_logic.generate_answer_for_question(
                 question_text, 
                 enhanced_context, 
-                short_name
+                short_name,
+                provider
             )
             
             version = self.business_logic.create_and_save_answer_version(
