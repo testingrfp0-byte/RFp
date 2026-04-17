@@ -14,6 +14,7 @@ class OpenAIClient(BaseLLMClient):
             system = " ".join(str(part) for part in system if part is not None)
         if isinstance(prompt, (tuple, list)):
             prompt = " ".join(str(part) for part in prompt if part is not None)
+        print(f"OpenAIClient: Completing with model '{self.model}'")
 
         response = self.client.chat.completions.create(
             model=self.model,

@@ -15,7 +15,7 @@ load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 from app.core.llm_client import get_llm_client
-from app.core.prompts import question_prompt,mode_block_prompt ,answer_generation_prompt, summary_and_analysis_prompt, summary_format_prompt, search_queries_prompt, generate_score_prompt
+from app.core.prompts import question_prompt,mode_block_prompt ,answer_generation_prompt, summary_and_analysis_prompt, summary_format_prompt, search_queries_prompt, generate_score_prompt, classification_prompt
 from app.core.llm_client.openai import OpenAIEmbeddingClient
 
 
@@ -110,7 +110,7 @@ def extract_questions_with_llm(pdf_text: str, provider: str):
     system_prompt = "Return ONLY strict valid JSON. No markdown. No commentary."
     client = get_llm_client(provider)
     content = client.complete(prompt=prompt, system=system_prompt)
-    print("Raw LLM output for question extraction:", content)
+    # print("Raw LLM output for question extraction:", content)
 
     content = content.strip()
     content = content.replace("```json", "").replace("```", "").strip()
@@ -505,3 +505,26 @@ def delete_rfp_embeddings(file_id: int):
 
     except Exception as e:
         print(f"Error: {e}")
+
+
+def classifiaction_QaI(rfp_text: str, selected_sections: list, provider) -> dict:
+    """
+    Classify RFP requirements into Instruction (I), Question (Q), or Both (B) using a 4-step decision tree.
+    Returns structured JSON with classification results and summary statistics.
+    """
+    prompt = classification_prompt(rfp_text, selected_sections)
+    print("Generated classification prompt:", prompt[:50], "...")
+    # system_prompt = (
+    #     "You are a meticulous RFP requirement classifier. You classify each requirement as Instruction (I), Question (Q), or Both (B) based on a strict 4-step decision tree. "
+    #     "You NEVER add information not present in the requirement text. You NEVER misclassify based on assumptions — only the explicit text. "
+    #     "You ALWAYS identify the first main verb as the key signal for classification. "
+    #     "Your output is a single JSON object with detailed classification results and summary statistics, following the exact structure specified in the prompt."
+    # )
+    client = get_llm_client(provider,model="gpt-5.4")
+    content = client.complete(prompt=prompt)
+    # print("Raw LLM output for classification:", content)
+
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="LLM returned invalid JSON for classification results.")

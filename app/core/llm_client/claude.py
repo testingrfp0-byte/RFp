@@ -8,6 +8,7 @@ class ClaudeClient(BaseLLMClient):
         self.model = model
 
     def complete(self, prompt: str, system=None, **kwargs):
+        print(f"ClaudeClient: Completing with model '{self.model}'")
         msg = self.client.messages.create(
             model=self.model,
             max_tokens=8096,

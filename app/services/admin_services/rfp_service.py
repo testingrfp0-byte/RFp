@@ -24,6 +24,7 @@ from app.core.serpapi.serpapi import search_with_serpapi
 from app.core.llm_client.openai import OpenAIEmbeddingClient
 from pathlib import Path
 from app.services.file_services.file_extracter import extract_text_from_file, SUPPORTED_EXTENSIONS
+from app.services.llm_services.llm_service import classifiaction_QaI
 
 class RFPExtractionError(Exception):
     """Raised when file reading or text extraction fails unexpectedly."""
@@ -122,10 +123,13 @@ async def process_rfp_file(
         db.refresh(new_rfp)
 
         print(f"Processing RFP ID {new_rfp.id} with provider {provider}")
+        print(f"Extracted text length: {len(rfp_text)} characters")
 
         search_queries = generate_search_queries(rfp_text, provider)
         # print(f"Generated {len(search_queries)} search queries for RFP ID {new_rfp.id}")
+        # classifiaction_QaI_results = classifiaction_QaI(rfp_text, selected_sections=["Scope of Work", "Proposal Content"], provider=provider)
         questions_grouped = extract_questions_with_llm(rfp_text, provider)
+
         # print(f"Extracted questions grouped by section for RFP ID {new_rfp.id}: {questions_grouped.keys()}")
         company_rfp_text = extract_company_background_from_rfp(rfp_text, provider)
 
@@ -176,12 +180,6 @@ async def process_rfp_file(
 
         for i, chunk in enumerate(chunks):
             try:
-                # embedding_response = client.embeddings.create(
-                #     model="text-embedding-3-small",
-                #     input=chunk
-                # )
-                # embedding_vector = embedding_response.data[0].embedding
-
                 embedding_vector = OpenAIEmbeddingClient().embed(chunk)
 
                 index.upsert([
@@ -513,3 +511,18 @@ def get_trash_documents(db: Session, current_user):
 #             status_code=500,
 #             detail=f"Failed to permanently delete RFP document: {str(e)}"
 #         )
+
+def structure_classification(data):
+    structured = {"I": [], "Q": [], "B": []}
+
+    for item in data.get("classification_results", []):
+        cls = item.get("classification")
+
+        simplified = {
+            "item_number": item["item_number"],
+            "text": item["item_text"]
+        }
+
+        structured[cls].append(simplified)
+
+    return structured
