@@ -127,8 +127,8 @@ async def process_rfp_file(
 
         search_queries = generate_search_queries(rfp_text, provider)
         # print(f"Generated {len(search_queries)} search queries for RFP ID {new_rfp.id}")
-        classification_QaI_results = classification_QaI(rfp_text, selected_sections= [], provider=provider)
-        print(classification_QaI_results)
+        # classification_QaI_results = classification_QaI(rfp_text, selected_sections= [], provider=provider)
+        # print(classification_QaI_results)
         questions_grouped = extract_questions_with_llm(rfp_text, provider)
         # print("Question  :"+questions_grouped)
 

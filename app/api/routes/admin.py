@@ -2,13 +2,13 @@ import os
 from fastapi import APIRouter
 from fastapi.staticfiles import StaticFiles
 from app.db.database import Base, engine
-from app.services.admin_routes.rfp_routes import router as rfp_router
-from app.services.admin_routes.user_routes import router as user_router
-from app.services.admin_routes.reviewer_routes import router as reviewer_router
-from app.services.admin_routes.document_routes import router as document_router
-from app.services.admin_routes.notification_routes import router as notification_router
-from app.services.admin_routes.analysis_routes import router as analysis_router
-from app.services.admin_routes.dynamic_form_routes import router as dynamic_form_router
+from app.api.routes.admin_routes.rfp_routes import router as rfp_router
+from app.api.routes.admin_routes.user_routes import router as user_router
+from app.api.routes.admin_routes.reviewer_routes import router as reviewer_router
+from app.api.routes.admin_routes.document_routes import router as document_router
+from app.api.routes.admin_routes.notification_routes import router as notification_router
+from app.api.routes.admin_routes.analysis_routes import router as analysis_router
+from app.api.routes.admin_routes.dynamic_form_routes import router as dynamic_form_router
 
 router = APIRouter()
 Base.metadata.create_all(engine)
