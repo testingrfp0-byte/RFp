@@ -104,9 +104,9 @@ def summarize_results_with_llm(all_snippets: list, rfp_company_text: str, provid
     content = client.complete(prompt=prompt, system=system_prompt)
     return content
 
-def extract_questions_with_llm(pdf_text: str, provider: str):
+def extract_questions_with_llm(classification_QaI_results: str, provider: str):
     
-    prompt = question_prompt(pdf_text)
+    prompt = question_prompt(classification_QaI_results)
     system_prompt = "Return ONLY strict valid JSON. No markdown. No commentary."
     client = get_llm_client(provider)
     content = client.complete(prompt=prompt, system=system_prompt)
@@ -507,20 +507,20 @@ def delete_rfp_embeddings(file_id: int):
         print(f"Error: {e}")
 
 
-def classifiaction_QaI(rfp_text: str, selected_sections: list, provider) -> dict:
+def classification_QaI(rfp_text: str, selected_sections: list, provider) -> dict:
     """
     Classify RFP requirements into Instruction (I), Question (Q), or Both (B) using a 4-step decision tree.
     Returns structured JSON with classification results and summary statistics.
     """
     prompt = classification_prompt(rfp_text, selected_sections)
-    print("Generated classification prompt:", prompt[:50], "...")
+    # print("Generated classification prompt:", prompt[:50], "...")
     # system_prompt = (
     #     "You are a meticulous RFP requirement classifier. You classify each requirement as Instruction (I), Question (Q), or Both (B) based on a strict 4-step decision tree. "
     #     "You NEVER add information not present in the requirement text. You NEVER misclassify based on assumptions — only the explicit text. "
     #     "You ALWAYS identify the first main verb as the key signal for classification. "
     #     "Your output is a single JSON object with detailed classification results and summary statistics, following the exact structure specified in the prompt."
     # )
-    client = get_llm_client(provider,model="gpt-5.4")
+    client = get_llm_client(provider)
     content = client.complete(prompt=prompt)
     # print("Raw LLM output for classification:", content)
 

@@ -23,8 +23,9 @@ async def search_related_summary(
     project_name: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    provider: str = "openai"
+    provider: str = Form(...)
 ):
+    # print(f"Received file: {file.filename}, project_name: {project_name}, provider: {provider}")
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

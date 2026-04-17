@@ -25,6 +25,7 @@ MODEL_REGISTRY = {
 
 def get_llm_client(model: str) -> BaseLLMClient:
     model = model.lower().strip()
+    # print(f"Requested LLM model: '{model}'")
 
     if model not in MODEL_REGISTRY:
         raise ValueError(f"Unknown model '{model}'. Supported: {list(MODEL_REGISTRY.keys())}")

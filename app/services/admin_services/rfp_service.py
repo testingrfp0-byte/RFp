@@ -24,7 +24,7 @@ from app.core.serpapi.serpapi import search_with_serpapi
 from app.core.llm_client.openai import OpenAIEmbeddingClient
 from pathlib import Path
 from app.services.file_services.file_extracter import extract_text_from_file, SUPPORTED_EXTENSIONS
-from app.services.llm_services.llm_service import classifiaction_QaI
+from app.services.llm_services.llm_service import classification_QaI
 
 class RFPExtractionError(Exception):
     """Raised when file reading or text extraction fails unexpectedly."""
@@ -127,8 +127,10 @@ async def process_rfp_file(
 
         search_queries = generate_search_queries(rfp_text, provider)
         # print(f"Generated {len(search_queries)} search queries for RFP ID {new_rfp.id}")
-        # classifiaction_QaI_results = classifiaction_QaI(rfp_text, selected_sections=["Scope of Work", "Proposal Content"], provider=provider)
+        # classification_QaI_results = classification_QaI(rfp_text, selected_sections=["Scope of Work", "Proposal Content"], provider=provider)
+        # print(classification_QaI_results)
         questions_grouped = extract_questions_with_llm(rfp_text, provider)
+        # print("Question  :"+questions_grouped)
 
         # print(f"Extracted questions grouped by section for RFP ID {new_rfp.id}: {questions_grouped.keys()}")
         company_rfp_text = extract_company_background_from_rfp(rfp_text, provider)
