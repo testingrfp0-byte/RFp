@@ -1,13 +1,22 @@
-def classification_prompt(rfp_text, selected_sections, proposal_instructions= None):
-    sections_str = "\n- " + "\n- ".join(selected_sections)
+def classification_prompt(rfp_text, selected_sections = None, proposal_instructions= None):
+    sections_block = ""
+    
+    if selected_sections:  # handles None AND empty list
+        sections_str = "\n- " + "\n- ".join(selected_sections)
+        sections_block = f"""
+            IMPORTANT FILTER:
+            Only process items that belong to the following sections:
+            {sections_str}
+
+            Ignore any items that fall outside these sections.
+            """
+
     return  f"""You are simultaneously two roles:
 
             ROLE A: An EVALUATOR scoring proposals before contract award.
             ROLE B: A CONTRACT MANAGER overseeing delivery after award.
 
-            IMPORTANT FILTER:
-            Only process items that belong to the following sections:
-            {sections_str}
+            {sections_block}
 
             Ignore any items that fall outside these sections.
 
@@ -100,7 +109,10 @@ def classification_prompt(rfp_text, selected_sections, proposal_instructions= No
                 {{
                 "item_number": 1,
                 "item_text": "verbatim text of the requirement",
+                "section_number": "number of the section this item belongs to",
+                "section": "section title this item belongs to",
                 "subsection": "subsection title this item belongs to",
+                "subsection_number": "number of the subsection this item belongs to",
                 "classification": "I",
                 "step_that_decided": "Step 2 — verb signal",
                 "dual_reader": {{

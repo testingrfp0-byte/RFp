@@ -1,10 +1,11 @@
-from fastapi import APIRouter,Depends
+from fastapi import APIRouter,Depends, Form
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User
 from app.utils.dependencies import get_db
 from app.api.routes.utils import get_current_user
-from app.utils.user_function import answer_versions,assigned_questions,generate_answers_service,update_answer_service,submit_service,chech_service,filter_service,analyze_single_question
 from app.schemas.schema import UpdateAnswerRequest
+from app.services.user_services.user_service import UserService
+from fastapi import HTTPException
 
 router = APIRouter()
 
@@ -13,16 +14,28 @@ def get_assigned_questions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return assigned_questions(db, current_user)
+    try:
+        service = UserService(db)
+        return service.get_assigned_questions(current_user)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/generate-answers/{question_id}")
 def generate_answers(
     question_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    provider: str = "openai" 
+    provider: str = Form(...)
 ):
-    return generate_answers_service(db, current_user, question_id, provider)
+    try:
+        service = UserService(db)
+        return service.generate_answer(current_user, question_id, provider)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/answers/{question_id}/versions")
 def get_answer_versions(
@@ -30,7 +43,12 @@ def get_answer_versions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return answer_versions(db, current_user, question_id)
+    try:
+        service = UserService(db)
+        return service.get_answer_versions(current_user, question_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.patch('/update-answer/{question_id}')
 def update_answer_endpoint(
@@ -39,7 +57,15 @@ def update_answer_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return update_answer_service(db, current_user, question_id, request.answer)
+    try:
+        service = UserService(db)
+        return service.update_answer(current_user, question_id, request.answer)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.patch('/submit')
 def submit(
@@ -48,11 +74,25 @@ def submit(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return submit_service(db, current_user, question_id,status)
+    try:
+        service = UserService(db)
+        return service.submit_answer(current_user, question_id, status)
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get('/get_user_status')
 def check(db: Session = Depends(get_db),current_user: User = Depends(get_current_user)):
-    return chech_service(db,current_user)
+    try:
+        service = UserService(db)
+        return service.check_user_status(current_user)
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get('/filter-questions-by-user/{status}')
 def filter_questions_by_status(
@@ -60,7 +100,14 @@ def filter_questions_by_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return filter_service(db, current_user,status)
+    try:
+        service = UserService(db)
+        return service.filter_by_status(current_user, status)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/analyze-question")
 def analyze_single(
@@ -69,4 +116,10 @@ def analyze_single(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return analyze_single_question(rfp_id, question_id, db, current_user)
+    try:
+        service = UserService(db)
+        return service.analyze_question(rfp_id, question_id, current_user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

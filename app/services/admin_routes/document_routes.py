@@ -213,7 +213,7 @@ def upload_library_new(
     category: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    provider: str = "openai"
+    provider: str = Form(...)
 ):
     if current_user.role.lower() != "admin":
         raise HTTPException(
