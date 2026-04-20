@@ -23,7 +23,8 @@ async def search_related_summary(
     project_name: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    provider: str = Form(...)
+    provider: str = Form(...),
+    custom_message: str = Form(None)
 ):
     # print(f"Received file: {file.filename}, project_name: {project_name}, provider: {provider}")
     if current_user.role != "admin":
@@ -32,7 +33,7 @@ async def search_related_summary(
             detail="Only admins can access summary docs."
         )
     
-    return await process_rfp_file(file, project_name, db, current_user, provider)
+    return await process_rfp_file(file, project_name, db, current_user, provider,custom_message)
 
 @router.get("/filedetails", response_model=List[FileDetails])
 def get_file_details(

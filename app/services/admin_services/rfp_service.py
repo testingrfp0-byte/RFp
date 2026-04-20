@@ -12,13 +12,15 @@ from app.models.rfp_models import RFPDocument, RFPQuestion, CompanySummary,Gener
 from app.services.llm_services.llm_service import (
     extract_text_from_pdf,
     extract_company_background_from_rfp,
-    extract_questions_with_llm,
+    # extract_questions_with_llm,
+    # questions_grouped_function,
     summarize_results_with_llm,
     generate_search_queries,
     parse_rfp_summary,
     clean_extracted_text,
     delete_rfp_embeddings
 )
+from app.core.prompts.question_grouped_function import questions_grouped_function
 from app.config import pc, index, UPLOAD_FOLDER
 from app.core.serpapi.serpapi import search_with_serpapi
 from app.core.llm_client.openai import OpenAIEmbeddingClient
@@ -35,7 +37,8 @@ async def process_rfp_file(
     project_name: str,
     db: Session,
     current_user,
-    provider: str = "openai"
+    provider: str = "openai",
+    custom_message: str = None
 ):
     try:
         try:
@@ -129,7 +132,7 @@ async def process_rfp_file(
         # print(f"Generated {len(search_queries)} search queries for RFP ID {new_rfp.id}")
         # classification_QaI_results = classification_QaI(rfp_text, selected_sections= [], provider=provider)
         # print(classification_QaI_results)
-        questions_grouped = extract_questions_with_llm(rfp_text, provider)
+        questions_grouped = questions_grouped_function(rfp_text, custom_message, provider)
         # print("Question  :"+questions_grouped)
 
         # print(f"Extracted questions grouped by section for RFP ID {new_rfp.id}: {questions_grouped.keys()}")

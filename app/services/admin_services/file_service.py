@@ -22,7 +22,7 @@ from app.core.llm_client.openai import OpenAIEmbeddingClient
 import re
 
 
-def upload_documents(files, project_name, category, current_user, db: Session, provider: str):
+def upload_documents(files, project_name, category, current_user, db: Session, provider: str,custom_message: str = None):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     uploaded_docs = []
 
@@ -74,7 +74,8 @@ def upload_documents(files, project_name, category, current_user, db: Session, p
                     "category": new_doc.category,
                     "project_name": new_doc.project_name,
                     "type": "summary",
-                    "text": summary
+                    "text": summary,
+                    "custom_message": custom_message or ""
                 }
             )],
             namespace=f"rfp_{new_doc.id}"
@@ -83,6 +84,7 @@ def upload_documents(files, project_name, category, current_user, db: Session, p
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         chunks = splitter.split_text(text)
         vectors = []
+
         for i, chunk in enumerate(chunks):
             # vector = get_embedding(chunk)
             vector = OpenAIEmbeddingClient().embed(chunk)
@@ -96,7 +98,8 @@ def upload_documents(files, project_name, category, current_user, db: Session, p
                     "project_name": new_doc.project_name,
                     "type": "chunk",
                     "chunk_id": i,
-                    "text": chunk
+                    "text": chunk,
+                    "custom_message": custom_message or ""
                 }
             ))
 
@@ -107,7 +110,8 @@ def upload_documents(files, project_name, category, current_user, db: Session, p
             "document_id": new_doc.id,
             "filename": new_doc.filename,
             "category": new_doc.category,
-            "project_name": new_doc.project_name
+            "project_name": new_doc.project_name,
+            "custom_message": custom_message
         })
 
     return uploaded_docs

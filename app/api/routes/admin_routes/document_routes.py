@@ -213,7 +213,8 @@ def upload_library_new(
     category: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    provider: str = Form(...)
+    provider: str = Form(...),
+    custom_message: str = Form(None)
 ):
     if current_user.role.lower() != "admin":
         raise HTTPException(
@@ -222,7 +223,7 @@ def upload_library_new(
         )
 
     try:
-        uploaded_docs = upload_documents(files, project_name, category, current_user, db, provider)
+        uploaded_docs = upload_documents(files, project_name, category, current_user, db, provider,custom_message)
         return {
             "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
             "documents": uploaded_docs
@@ -231,6 +232,7 @@ def upload_library_new(
     except Exception as e:
         import traceback
         print(traceback.format_exc())
+        
         raise HTTPException(
             status_code=409,
             detail="This RFP already exist."
