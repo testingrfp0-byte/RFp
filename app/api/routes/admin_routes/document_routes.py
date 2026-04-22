@@ -228,7 +228,7 @@ async def upload_library_new(
         )
 
     try:
-        uploaded_docs = upload_documents(files, project_name, category, current_user, db, provider,custom_message)
+        uploaded_docs = await upload_documents(files, project_name, category, current_user, db, provider,custom_message)
         return {
             "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
             "documents": uploaded_docs

@@ -23,7 +23,7 @@ from app.core.llm_client.openai import OpenAIEmbeddingClient
 import re
 
 
-def upload_documents(files, project_name, category, current_user, db: Session, provider: str,custom_message: str = None):
+async def upload_documents(files, project_name, category, current_user, db: Session, provider: str,custom_message: str = None):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     uploaded_docs = []
 
@@ -56,8 +56,8 @@ def upload_documents(files, project_name, category, current_user, db: Session, p
             file_hash=file_hash
         )
         db.add(new_doc)
-        db.commit()
-        db.refresh(new_doc)
+        await db.commit()
+        await db.refresh(new_doc)
 
         text = extract_text_from_file(file_path)
         if not text:
