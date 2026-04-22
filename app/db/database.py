@@ -24,8 +24,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
-ASYNC_DATABASE_URL = "postgresql+asyncpg://postgres:1234@localhost:5433/rfp_db"
+# DATABASE_URL = os.getenv("DATABASE_URL") 
+ASYNC_DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_async_engine(ASYNC_DATABASE_URL, echo=False, pool_pre_ping=True)
 
