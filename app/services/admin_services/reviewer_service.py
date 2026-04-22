@@ -1,14 +1,16 @@
 import re
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 from fastapi_mail import FastMail, MessageSchema, MessageType
 from app.models.rfp_models import KeystoneFile, User, Reviewer, RFPQuestion, ReviewerAnswerVersion
-from app.services.llm_services.llm_service import _sanitize_short_name, get_short_name, get_similar_context, client,get_active_keystone_text
+from app.services.llm_services.llm_service import _sanitize_short_name, get_short_name, get_similar_context, client
 from app.schemas.schema import AssignReviewer, ReviewerOut, ReassignReviewerRequest
 from app.config import mail_config, LOGIN_URL
+from sqlalchemy.orm import selectinload
 
-def assign_multiple_review(request: AssignReviewer, db: Session, current_user):
+async def assign_multiple_review(request: AssignReviewer, db: AsyncSession, current_user: User):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -19,7 +21,8 @@ def assign_multiple_review(request: AssignReviewer, db: Session, current_user):
         assigned_questions = []
 
         for uid in request.user_id:
-            user = db.query(User).filter(User.id == uid).first()
+            user = await db.execute(select(User).filter(User.id == uid))
+            user = user.scalar()
             if not user:
                 continue
             if not user.is_verified:
@@ -29,17 +32,19 @@ def assign_multiple_review(request: AssignReviewer, db: Session, current_user):
                 )
 
             for ques_id in request.ques_ids:
-                question = db.query(RFPQuestion).filter(
+                question = await db.execute(select(RFPQuestion).filter(
                     RFPQuestion.id == ques_id,
                     RFPQuestion.rfp_id == request.file_id
-                ).first()
+                ))
+                question = question.scalar()
                 if not question:
                     continue
 
-                existing = db.query(Reviewer).filter_by(
+                existing = await db.execute(select(Reviewer).filter_by(
                     user_id=uid,
                     ques_id=ques_id
-                ).first()
+                ))
+                existing = existing.scalar()
                 if existing:
                     continue
 
@@ -62,7 +67,7 @@ def assign_multiple_review(request: AssignReviewer, db: Session, current_user):
                     "submit_status": "process"
                 })
 
-        db.commit()
+        await db.commit()
 
         return {
             "message": "Reviewer(s) assigned to multiple questions successfully",
@@ -73,22 +78,27 @@ def assign_multiple_review(request: AssignReviewer, db: Session, current_user):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_reviewers_by_file_service(file_id: int, db: Session):
+from sqlalchemy.orm import selectinload
+
+async def get_reviewers_by_file_service(file_id: int, db: AsyncSession):
     try:
-        results = (
-            db.query(Reviewer)
+        results = await db.execute(
+            select(Reviewer)
             .join(RFPQuestion, Reviewer.ques_id == RFPQuestion.id)
             .join(User, Reviewer.user_id == User.id)
+            .options(
+                selectinload(Reviewer.user)  # ✅ only relationship needs this
+            )
             .filter(RFPQuestion.rfp_id == file_id)
-            .all()
         )
+        results = results.scalars().all()
 
         output = [
             ReviewerOut(
                 ques_id=r.ques_id,
-                question=r.question,
+                question=r.question,        # ✅ plain column, access directly
                 user_id=r.user_id,
-                username=r.user.username,
+                username=r.user.username,   # ✅ safe via selectinload
                 status=r.status
             )
             for r in results
@@ -98,8 +108,11 @@ def get_reviewers_by_file_service(file_id: int, db: Session):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
 
-def check_submissions_service(db: Session, current_user):
+from sqlalchemy.orm import selectinload
+
+async def check_submissions_service(db: AsyncSession, current_user: User):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -107,7 +120,14 @@ def check_submissions_service(db: Session, current_user):
                 detail="Only admins can view submissions."
             )
 
-        reviewers = db.query(Reviewer).all()
+        reviewers = await db.execute(
+            select(Reviewer)
+            .options(
+                selectinload(Reviewer.user),                              # ✅ i.user.username
+                selectinload(Reviewer.question_ref).selectinload(RFPQuestion.rfp)  # ✅ i.question_ref.rfp.filename
+            )
+        )
+        reviewers = reviewers.scalars().all()
         data = []
 
         for i in reviewers:
@@ -141,8 +161,9 @@ def check_submissions_service(db: Session, current_user):
         raise http_exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-def get_assign_user_status_service(db: Session, current_user):
+    
+    
+async def get_assign_user_status_service(db: AsyncSession, current_user: User):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -150,7 +171,16 @@ def get_assign_user_status_service(db: Session, current_user):
                 detail="Only admins can access check user status"
             )
 
-        reviewers = db.query(Reviewer).all()
+        # reviewers = await db.execute(select(Reviewer))
+        reviewers = await db.execute(
+            select(Reviewer).options(
+                selectinload(Reviewer.user),
+                selectinload(Reviewer.question_ref)
+                .selectinload(RFPQuestion.rfp)
+            )
+        )
+
+        reviewers = reviewers.scalars().all()
         if not reviewers:
             return {
                 "message": "No reviewers found",
@@ -185,7 +215,7 @@ def get_assign_user_status_service(db: Session, current_user):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-async def remove_user_service(ques_id: int, user_id: int, db: Session, current_user):
+async def remove_user_service(ques_id: int, user_id: int, db: AsyncSession, current_user):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -193,32 +223,32 @@ async def remove_user_service(ques_id: int, user_id: int, db: Session, current_u
                 detail="Only admins can remove the user."
             )
 
-        assign = (
-            db.query(Reviewer)
-            .filter(Reviewer.ques_id == ques_id, Reviewer.user_id == user_id)
-            .first()
+        assign_result = await db.execute(
+            select(Reviewer).filter(Reviewer.ques_id == ques_id, Reviewer.user_id == user_id)
         )
+        assign = assign_result.scalars().first()
         if not assign:
             raise HTTPException(
                 status_code=404,
                 detail="Reviewer assignment not found."
             )
-        user = db.query(User).filter(User.id == user_id).first()
-        question = db.query(RFPQuestion).filter(RFPQuestion.id == ques_id).first()
+        user = await db.execute(select(User).filter(User.id == user_id))
+        user = user.scalar()
+        question = await db.execute(select(RFPQuestion).filter(RFPQuestion.id == ques_id))
+        question = question.scalar()
 
-        ans = (
-            db.query(ReviewerAnswerVersion)
-            .filter(
+        ans_result = await db.execute(
+            select(ReviewerAnswerVersion).filter(
                 ReviewerAnswerVersion.ques_id == ques_id,
                 ReviewerAnswerVersion.user_id == user_id
             )
-            .first()
         )
+        ans = ans_result.scalars().first()
         if ans:
-            db.delete(ans)
+            await db.delete(ans)
 
-        db.delete(assign)
-        db.commit()
+        await db.delete(assign)
+        await db.commit()
 
         if user and user.email and question:
             fm = FastMail(mail_config)
@@ -253,22 +283,29 @@ async def remove_user_service(ques_id: int, user_id: int, db: Session, current_u
             detail=f"Failed to remove reviewer: {str(e)}"
         )
 
-async def reassign_reviewer_service(request: ReassignReviewerRequest, db: Session, current_user):
-    user = db.query(User).filter(User.id == request.user_id).first()
+async def reassign_reviewer_service(request: ReassignReviewerRequest, db: AsyncSession, current_user):
+    user_result = await db.execute(select(User).filter(User.id == request.user_id))
+    user = user_result.scalar_one_or_none()
     if not user or not user.email:
         raise HTTPException(status_code=404, detail="User not found or email missing")
 
-    question = db.query(RFPQuestion).filter(
-        RFPQuestion.id == request.ques_id,
-        RFPQuestion.rfp_id == request.file_id
-    ).first()
+    question = await db.execute(
+        select(RFPQuestion).filter(
+            RFPQuestion.id == request.ques_id,
+            RFPQuestion.rfp_id == request.file_id
+        )
+    )
+    question = question.scalar()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    existing = db.query(Reviewer).filter_by(
-        user_id=request.user_id,
-        ques_id=request.ques_id
-    ).first()
+    existing = await db.execute(
+        select(Reviewer).filter_by(
+            user_id=request.user_id,
+            ques_id=request.ques_id
+        )
+    )
+    existing = existing.scalar()
 
     if existing:
         existing.submit_status = "process"
@@ -287,7 +324,7 @@ async def reassign_reviewer_service(request: ReassignReviewerRequest, db: Sessio
         existing = reviewer_entry
 
     question.assigned_at = datetime.utcnow()
-    db.commit()
+    await db.commit()
 
     fm = FastMail(mail_config)
     message = MessageSchema(
@@ -317,7 +354,7 @@ async def reassign_reviewer_service(request: ReassignReviewerRequest, db: Sessio
     await fm.send_message(message)
 
     existing.status = "notified"
-    db.commit()
+    await db.commit()
 
     return {
         "message": "Reviewer reassigned successfully and notified via email",
@@ -327,7 +364,7 @@ async def reassign_reviewer_service(request: ReassignReviewerRequest, db: Sessio
         "submit_status": existing.submit_status
     }
 
-async def regenerate_answer_with_chat_service(request, db: Session):
+async def regenerate_answer_with_chat_service(request, db: AsyncSession):
     user_id = request.user_id
     ques_id = request.ques_id
     chat_message = request.chat_message
@@ -335,10 +372,13 @@ async def regenerate_answer_with_chat_service(request, db: Session):
     # ----------------------------------------------------------------
     # Fetch reviewer
     # ----------------------------------------------------------------
-    reviewer = db.query(Reviewer).filter_by(
-        user_id=user_id,
-        ques_id=ques_id
-    ).first()
+    reviewer_result = await db.execute(
+        select(Reviewer).where(
+            Reviewer.user_id == user_id,
+            Reviewer.ques_id == ques_id
+        )
+    )
+    reviewer = reviewer_result.scalar_one_or_none()
 
     if not reviewer:
         raise HTTPException(
@@ -349,7 +389,10 @@ async def regenerate_answer_with_chat_service(request, db: Session):
     # ----------------------------------------------------------------
     # Fetch question
     # ----------------------------------------------------------------
-    question = db.query(RFPQuestion).filter_by(id=ques_id).first()
+    question_result = await db.execute(
+        select(RFPQuestion).where(RFPQuestion.id == ques_id)
+    )
+    question = question_result.scalar_one_or_none()
     if not question:
         raise HTTPException(
             status_code=404,
@@ -362,9 +405,10 @@ async def regenerate_answer_with_chat_service(request, db: Session):
     # Fetch short_name from the parent RFP record.
     # Sanitize defensively to block UUID/hash values.
     # ----------------------------------------------------------------
-    rfp_record = db.query(KeystoneFile).filter_by(
-        id=question.rfp_id
-    ).first()
+    rfp_result = await db.execute(
+        select(KeystoneFile).where(KeystoneFile.id == question.rfp_id)
+    )
+    rfp_record = rfp_result.scalar_one_or_none()
 
     raw_filename = rfp_record.filename if rfp_record and rfp_record.filename else ""
     short_name = _sanitize_short_name(get_short_name(raw_filename)) if raw_filename else "the City"
@@ -372,10 +416,18 @@ async def regenerate_answer_with_chat_service(request, db: Session):
     # ----------------------------------------------------------------
     # Fetch Keystone data
     # ----------------------------------------------------------------
-    keystone_text = get_active_keystone_text(
-        db=db,
-        admin_id=question.admin_id
+    keystone_result = await db.execute(
+        select(KeystoneFile)
+        .where(KeystoneFile.admin_id == question.admin_id)
+        .order_by(KeystoneFile.uploaded_at.desc())
     )
+    keystone = keystone_result.scalars().first()
+    if not keystone:
+        raise HTTPException(
+            status_code=400,
+            detail="Keystone Data not uploaded. Please upload Keystone XLS."
+        )
+    keystone_text = keystone.extracted_text
 
     # ----------------------------------------------------------------
     # Fetch RFP context — unpack tuple correctly.
@@ -612,8 +664,8 @@ If not, revise until it does. Then output the final result.
     db.add(new_version)
 
     reviewer.ans = refined_answer
-    db.commit()
-    db.refresh(new_version)
+    await db.commit()
+    await db.refresh(new_version)
 
     return {
         "status": "success",

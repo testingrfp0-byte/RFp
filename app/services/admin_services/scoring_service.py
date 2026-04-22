@@ -1,21 +1,28 @@
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.rfp_models import RFPQuestion, Reviewer
 from app.services.llm_services.llm_service import analyze_answer_score_only
 
-def analyze_overall_score_service(rfp_id: int, db: Session):
+async def analyze_overall_score_service(rfp_id: int, db: AsyncSession):
     try:
-        questions = db.query(RFPQuestion).filter(RFPQuestion.rfp_id == rfp_id).all()
+        questions_result = await db.execute(
+            select(RFPQuestion).where(RFPQuestion.rfp_id == rfp_id)
+        )
+        questions = questions_result.scalars().all()
         if not questions:
             raise HTTPException(status_code=404, detail="No questions found for this RFP.")
 
         incomplete_questions = []
         for question in questions:
-            reviewers = db.query(Reviewer).filter(
-                Reviewer.ques_id == question.id,
-                Reviewer.ans.isnot(None),
-                Reviewer.ans != ""
-            ).all()
+            reviewers_result = await db.execute(
+                select(Reviewer).where(
+                    Reviewer.ques_id == question.id,
+                    Reviewer.ans.is_not(None),
+                    Reviewer.ans != ""
+                )
+            )
+            reviewers = reviewers_result.scalars().all()
             if not reviewers:
                 incomplete_questions.append({
                     "question_id": question.id,
@@ -33,11 +40,14 @@ def analyze_overall_score_service(rfp_id: int, db: Session):
 
         all_scores = []
         for question in questions:
-            reviewers = db.query(Reviewer).filter(
-                Reviewer.ques_id == question.id,
-                Reviewer.ans.isnot(None),
-                Reviewer.ans != ""
-            ).all()
+            reviewers_result = await db.execute(
+                select(Reviewer).where(
+                    Reviewer.ques_id == question.id,
+                    Reviewer.ans.is_not(None),
+                    Reviewer.ans != ""
+                )
+            )
+            reviewers = reviewers_result.scalars().all()
 
             for review in reviewers:
                 score = analyze_answer_score_only(

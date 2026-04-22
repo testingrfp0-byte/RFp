@@ -1,7 +1,7 @@
 import os
 from fastapi import APIRouter
 from fastapi.staticfiles import StaticFiles
-from app.db.database import Base, engine
+# from app.db.database import Base, engine
 from app.api.routes.admin_routes.rfp_routes import router as rfp_router
 from app.api.routes.admin_routes.user_routes import router as user_router
 from app.api.routes.admin_routes.reviewer_routes import router as reviewer_router
@@ -11,7 +11,7 @@ from app.api.routes.admin_routes.analysis_routes import router as analysis_route
 from app.api.routes.admin_routes.dynamic_form_routes import router as dynamic_form_router
 
 router = APIRouter()
-Base.metadata.create_all(engine)
+# Base.metadata.create_all(engine)
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)

@@ -12,6 +12,7 @@ from typing import List, Dict, Any
 from .user_repository import UserRepository
 from .user_validator import UserValidator
 from fastapi import HTTPException
+from sqlalchemy import select
 
 class UserBusinessLogic:
     """Business logic for user operations"""
@@ -21,9 +22,9 @@ class UserBusinessLogic:
         self.repository = UserRepository()
         self.validator = UserValidator()
     
-    def build_assigned_question_response(self, question, reviewer) -> Dict[str, Any]:
+    async def build_assigned_question_response(self, question, reviewer) -> Dict[str, Any]:
         """Build response for assigned question"""
-        latest_answer = self.repository.get_latest_answer_version(
+        latest_answer = await self.repository.get_latest_answer_version(
             self.db, 
             reviewer.user_id, 
             reviewer.ques_id
@@ -46,7 +47,7 @@ class UserBusinessLogic:
             "answer": latest_answer.answer if latest_answer else None
         }
     
-    def generate_enhanced_context(
+    async def generate_enhanced_context(
         self,
         question_text: str,
         rfp_id: int,
@@ -62,12 +63,13 @@ class UserBusinessLogic:
             rfp_id
         )
 
-        keystone = (
-        self.db.query(KeystoneFile)
-        .filter(KeystoneFile.admin_id == admin_id)
-        .order_by(KeystoneFile.uploaded_at.desc())
-        .first()
-    )
+        result = await self.db.execute(
+            select(KeystoneFile)
+            .where(KeystoneFile.admin_id == admin_id)
+            .order_by(KeystoneFile.uploaded_at.desc())
+        )
+
+        keystone = result.scalars().first()
 
         if not keystone:
             raise HTTPException(

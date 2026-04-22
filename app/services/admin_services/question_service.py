@@ -1,11 +1,13 @@
 from datetime import datetime
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.rfp_models import RFPDocument, RFPQuestion, Reviewer, User
 from app.services.llm_services.llm_service import get_next_index
 from app.schemas.schema import QuestionInput, AdminEditRequest
 
-def filter_question_service(rfp_id: int, db: Session, current_user):
+async def filter_question_service(rfp_id: int, db: AsyncSession, current_user):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -13,12 +15,13 @@ def filter_question_service(rfp_id: int, db: Session, current_user):
                 detail="Only admins can FILTER."
             )
 
-        rfp = (
-            db.query(RFPDocument)
+        # ✅ removed .first() from inside execute()
+        rfp_result = await db.execute(
+            select(RFPDocument)
             .options(joinedload(RFPDocument.questions))
             .filter(RFPDocument.id == rfp_id)
-            .first()
         )
+        rfp = rfp_result.scalars().first()  # ✅ scalars().first() not scalar()
 
         if not rfp:
             raise HTTPException(status_code=404, detail="RFP document not found")
@@ -28,23 +31,30 @@ def filter_question_service(rfp_id: int, db: Session, current_user):
         unassigned_questions = []
 
         for question in all_questions:
-            reviewers = db.query(Reviewer).filter(Reviewer.ques_id == question.id).all()
+            reviewers_result = await db.execute(
+                select(Reviewer).filter(Reviewer.ques_id == question.id)
+            )
+            reviewers = reviewers_result.scalars().all()
+
             if reviewers:
+
+                reviewer_list = []
+                for r in reviewers:
+                    user_result = await db.execute(
+                        select(User).filter(User.id == r.user_id)
+                    )
+                    user = user_result.scalars().first()
+                    reviewer_list.append({
+                        "user_id": r.user_id,
+                        "username": user.username if user else None, 
+                        "status": r.status,
+                        "submitted_at": r.submitted_at
+                    })
+
                 assigned_questions.append({
                     "id": question.id,
                     "text": question.question_text,
-                    "reviewers": [
-                        {
-                            "user_id": r.user_id,
-                            "username": db.query(User)
-                                .filter(User.id == r.user_id)
-                                .first()
-                                .username,
-                            "status": r.status,
-                            "submitted_at": r.submitted_at
-                        }
-                        for r in reviewers
-                    ]
+                    "reviewers": reviewer_list
                 })
             else:
                 unassigned_questions.append({
@@ -69,7 +79,7 @@ def filter_question_service(rfp_id: int, db: Session, current_user):
             detail=f"Failed to filter questions: {str(e)}"
         )
 
-def admin_filter_questions_by_status_service(status_filter: str, db: Session, current_user):
+async def admin_filter_questions_by_status_service(status_filter: str, db: AsyncSession, current_user):
     try:
         if current_user.role.lower() != "admin":
             raise HTTPException(
@@ -86,7 +96,10 @@ def admin_filter_questions_by_status_service(status_filter: str, db: Session, cu
                 detail="Invalid status. Must be one of: submitted, not submitted, process."
             )
 
-        reviewers = db.query(Reviewer).join(User).all()
+        reviewers_result = await db.execute(
+            select(Reviewer).options(selectinload(Reviewer.user)).join(User)
+        )
+        reviewers = reviewers_result.scalars().all()
         if not reviewers:
             raise HTTPException(
                 status_code=404,
@@ -116,10 +129,10 @@ def admin_filter_questions_by_status_service(status_filter: str, db: Session, cu
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def add_ques(
+async def add_ques(
     rfp_id: int,
     request: QuestionInput,
-    db: Session,
+    db: AsyncSession,
     current_user: User
 ):
     try:
@@ -129,7 +142,8 @@ def add_ques(
                 detail="Only admins can add questions"
             )
 
-        rfp = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+        rfp = await db.execute(select(RFPDocument).filter(RFPDocument.id == rfp_id))
+        rfp = rfp.scalar()
         if not rfp:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -145,7 +159,7 @@ def add_ques(
         created_ids = []
 
         for q in request.questions:
-            que_with_index = get_next_index(rfp_id, current_user.id, q, db)
+            que_with_index = await get_next_index(rfp_id, current_user.id, q, db)
 
             new_question = RFPQuestion(
                 rfp_id=rfp_id,
@@ -153,10 +167,10 @@ def add_ques(
                 admin_id=current_user.id
             )
             db.add(new_question)
-            db.flush()
+            await db.flush()
             created_ids.append(new_question.id)
 
-        db.commit()
+        await db.commit()
 
         return {
             "message": "Questions added successfully",
@@ -165,26 +179,26 @@ def add_ques(
         }
 
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected error: {str(e)}"
         )
 
-def edit_question_by_admin_service(request: AdminEditRequest, db: Session):
-    assignment = (
-        db.query(RFPQuestion, Reviewer)
+async def edit_question_by_admin_service(request: AdminEditRequest, db: AsyncSession):
+    assignment_result = await db.execute(
+        select(RFPQuestion, Reviewer)
         .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
-        .filter(RFPQuestion.id == request.question_id)
-        .first()
+        .where(RFPQuestion.id == request.question_id)
     )
+    assignment = assignment_result.first()
 
     if assignment is None:
         raise HTTPException(status_code=404, detail="Question not found.")
 
     question, reviewer = assignment
     reviewer.ans = request.answer
-    db.commit()
+    await db.commit()
 
     return {
         "message": "Answer updated successfully by admin.",
@@ -192,7 +206,7 @@ def edit_question_by_admin_service(request: AdminEditRequest, db: Session):
         "updated_answer": reviewer.ans,
     }
 
-def delete_question(question_id: int, db: Session, current_user):
+async def delete_question(question_id: int, db: AsyncSession, current_user):
 
     if current_user.role.lower() != "admin":
         raise HTTPException(
@@ -200,9 +214,10 @@ def delete_question(question_id: int, db: Session, current_user):
             detail="Only admin can delete questions"
         )
 
-    question = db.query(RFPQuestion).filter(
-        RFPQuestion.id == question_id
-    ).first()
+    question = await db.execute(
+        select(RFPQuestion).filter(RFPQuestion.id == question_id)
+    )
+    question = question.scalar()
 
     if not question:
         raise HTTPException(
@@ -216,9 +231,10 @@ def delete_question(question_id: int, db: Session, current_user):
             detail="Question is already assigned to a reviewer and cannot be deleted"
         )
 
-    reviewer_exists = db.query(Reviewer).filter(
-        Reviewer.ques_id == question_id
-    ).first()
+    reviewer_exists = await db.execute(
+        select(Reviewer).filter(Reviewer.ques_id == question_id)
+    )
+    reviewer_exists = reviewer_exists.scalar()
 
     if reviewer_exists:
         raise HTTPException(
@@ -226,8 +242,8 @@ def delete_question(question_id: int, db: Session, current_user):
             detail="Question has reviewer assignment and cannot be deleted"
         )
 
-    db.delete(question)
-    db.commit()
+    await db.delete(question)
+    await db.commit()
 
     return {
         "status": "success",

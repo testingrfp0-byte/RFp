@@ -1,6 +1,7 @@
 import os
 import uuid
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import FileResponse
 from app.models.rfp_models import User,KeystoneFile
 from fastapi import UploadFile, HTTPException, status
@@ -61,7 +62,7 @@ from app.services.llm_services.llm_service import extract_xls_text
 
 async def upload_keystone_file(
     file: UploadFile,
-    db: Session,
+    db: AsyncSession,
     current_user: User
 ):
     if current_user.role.lower() != "admin":
@@ -98,8 +99,8 @@ async def upload_keystone_file(
     )
 
     db.add(keystone_file)
-    db.commit()
-    db.refresh(keystone_file)
+    await db.commit()
+    await db.refresh(keystone_file)
 
     return {
         "status": "success",
@@ -148,9 +149,9 @@ async def upload_keystone_file(
 #         "message": "Keystone file deleted successfully"
 #     }
 
-def delete_keystone_file(
+async def delete_keystone_file(
     keystone_id: int,
-    db: Session,
+    db: AsyncSession,
     current_user: User,
 ):
     if current_user.role.lower() != "admin":
@@ -159,14 +160,13 @@ def delete_keystone_file(
             detail="Only admins can delete Keystone files"
         )
 
-    keystone = (
-        db.query(KeystoneFile)
-        .filter(
+    keystone_result = await db.execute(
+        select(KeystoneFile).filter(
             KeystoneFile.id == keystone_id,
             KeystoneFile.admin_id == current_user.id
         )
-        .first()
     )
+    keystone = keystone_result.scalars().first()
 
     if not keystone:
         raise HTTPException(
@@ -180,17 +180,17 @@ def delete_keystone_file(
     except Exception:
         pass
 
-    db.delete(keystone)
-    db.commit()
+    await db.delete(keystone)
+    await db.commit()
 
     return {
         "status": "success",
         "message": "Keystone file deleted successfully"
     }
 
-def view_keystone_file(
+async def view_keystone_file(
     keystone_id: int,
-    db: Session,
+    db: AsyncSession,
     current_user: User,
 ):
     if current_user.role.lower() != "admin":
@@ -199,14 +199,13 @@ def view_keystone_file(
             detail="Only admins can view Keystone files"
         )
 
-    keystone = (
-        db.query(KeystoneFile)
-        .filter(
+    keystone_result = await db.execute(
+        select(KeystoneFile).filter(
             KeystoneFile.id == keystone_id,
             KeystoneFile.admin_id == current_user.id
         )
-        .first()
     )
+    keystone = keystone_result.scalars().first()
 
     if not keystone:
         raise HTTPException(

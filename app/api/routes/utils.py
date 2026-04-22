@@ -2,14 +2,14 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status,Request
 from app.config import oauth2_scheme,SECRET_KEY,ALGORITHM,ACCESS_TOKEN_EXPIRE_MINUTES,SENDER_EMAIL,SENDER_PASSWORD
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.rfp_models import User
 from app.db.database import get_db
 import random, string
 import smtplib
 from email.mime.text import MIMEText
 from fastapi import BackgroundTasks
-from sqlalchemy.orm import Session
 import os
 import re
 
@@ -26,7 +26,7 @@ def verify_token(token: str):
     except JWTError:
         return None
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -41,13 +41,15 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    user = db.query(User).filter(User.id == user_id).first()
+    user_result = await db.execute(select(User).where(User.id == int(user_id)))
+    user = user_result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized user")
     user.role = role
 
     if user.role == "admin":
-        user.all_admins = db.query(User).filter(User.role == "admin").all()
+        admins_result = await db.execute(select(User).where(User.role == "admin"))
+        user.all_admins = admins_result.scalars().all()
     else:
         user.all_admins = []
 
@@ -89,4 +91,3 @@ def clean_answer(text: str) -> str:
     text = re.sub(r'[#*`]+', '', text)
     text = re.sub(r'\s+', ' ', text).strip()  
     return text
-

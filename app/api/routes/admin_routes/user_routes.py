@@ -7,30 +7,31 @@ from app.services.admin_services import (
     get_all_users, get_assigned_users,
     get_user_by_id_service, check_submissions_service,
     get_assign_user_status_service, update_profile_service)
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
 @router.get("/userdetails")
-def get_user(
-    db: Session = Depends(get_db),
+async def get_user(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return get_all_users(db, current_user)
+    return await get_all_users(db, current_user)
 
 @router.get("/get_assign_users")
-def get_assigned(
-    db: Session = Depends(get_db),
+async def get_assigned(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return get_assigned_users(db, current_user)
+    return await get_assigned_users(db, current_user)
 
 @router.get("/userdetails/{user_id}")
-def get_user_by_id_route(
+async def get_user_by_id_route(
     user_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return get_user_by_id_service(user_id, db)
+    return await get_user_by_id_service(user_id, db)
 
 @router.put("/update-profile")
 async def update_profile(
@@ -38,7 +39,7 @@ async def update_profile(
     email: str | None = Form(None),
     image_name: str | None = Form(None),
     image_base64: str | None = Form(None),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     return await update_profile_service(
@@ -51,15 +52,15 @@ async def update_profile(
     )
 
 @router.get("/check_submit")
-def check(
-    db: Session = Depends(get_db),
+async def check(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return check_submissions_service(db, current_user)
+    return await check_submissions_service(db, current_user)
 
 @router.get("/assign_user_status")
-def assign_status(
-    db: Session = Depends(get_db),
+async def assign_status(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return get_assign_user_status_service(db, current_user)
+    return await get_assign_user_status_service(db, current_user)

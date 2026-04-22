@@ -1,4 +1,7 @@
+from unittest import result
+
 from fastapi import Depends,HTTPException,APIRouter,status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.schemas.schema import user_register
 from app.services.llm_services.llm_service import hash_password
@@ -15,15 +18,21 @@ from datetime import datetime, timedelta
 from app.config import LOGIN_URL
 SESSION_COOKIE = "session_user"
 router = APIRouter()
-
+from sqlalchemy.ext.asyncio import AsyncSession
+    
 @router.post("/register")
-def register(
+async def register(
     request: user_register,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     try:
-        existing_user = db.query(User).filter(User.email == request.email).first()
+        # existing_user = await db.execute(db.query(User).filter(User.email == request.email).first())
+        result = await db.execute(
+                select(User).where(User.email == request.email)
+            )
+        existing_user = result.scalars().first()
+        # existing_user = existing_user.scalar()
 
         if existing_user and existing_user.is_verified:
             raise HTTPException(
@@ -31,7 +40,12 @@ def register(
                 detail="Email already registered"
             )
         
-        existing_username = db.query(User).filter(User.username == request.username.strip()).first()
+        # existing_username = await db.execute(db.query(User).filter(User.username == request.username.strip()).first())
+        result = await db.execute(
+            select(User).where(User.username == request.username.strip())
+        )
+        existing_username = result.scalars().first()
+        # existing_username = existing_username.scalar()
         if existing_username and (not existing_user or existing_user.id != existing_username.id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -65,8 +79,8 @@ def register(
             )
             db.add(user)
 
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
 
         if request.mode == "add":
             verification_url = (
@@ -97,10 +111,14 @@ def register(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/verify-email")
-def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db)):
+async def verify_email(email: str, otp: str, role: str, db: AsyncSession = Depends(get_db)):
     try:
-        user = db.query(User).filter(User.email == email.strip().lower()).first()
-
+        # user = await db.execute(db.query(User).filter(User.email == email.strip().lower()).first())
+        # user = user.scalar()
+        result = await db.execute(
+            select(User).where(User.email == email.strip().lower())
+        )
+        user = result.scalars().first()
 
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -118,7 +136,7 @@ def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db))
         user.is_verified = True
         user.reset_otp = None
         user.otp_expiry = None
-        db.commit()
+        await db.commit()
 
         return {"message": "Email verified successfully", "role": user.role}
     except HTTPException:
@@ -127,19 +145,25 @@ def verify_email(email: str, otp: str, role: str, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/verify_otp")
-def verify_otp(request: VerifyOtpRequest, db: Session = Depends(get_db)):
+async def verify_otp(request: VerifyOtpRequest, db: AsyncSession = Depends(get_db)):
     try:
         email = request.email.strip().lower()
         provided_otp = str(request.otp).strip()
 
-        user = db.query(User).filter(User.email == email).first()
+        # user = await db.execute(db.query(User).filter(User.email == email).first())
+        # user = user.scalar()
+
+        result = await db.execute(
+            select(User).where(User.email == email)
+        )
+        user = result.scalars().first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
         if user.otp_expiry < datetime.utcnow(): 
             user.reset_otp = None
             user.otp_expiry = None
-            db.commit()
+            await db.commit()
             raise HTTPException(status_code=400, detail="The OTP has expired. Please request a new OTP")
 
         stored_otp = str(user.reset_otp).strip()
@@ -153,17 +177,18 @@ def verify_otp(request: VerifyOtpRequest, db: Session = Depends(get_db)):
         if not user.is_verified:
             user.is_verified = True
 
-        db.commit()
+        await db.commit()
 
         return {"message": "OTP verified successfully."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
 
 @router.post("/login")
-def login(request: LoginRequest, db: Session = Depends(get_db)):
+async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     try:
-        user = db.query(User).filter(User.email == request.email.strip().lower()).first()
-
+        result = await db.execute(select(User).filter(User.email == request.email.strip().lower()))
+        user = result.scalar()
         if not user:
             raise HTTPException(status_code=400, detail="Invalid credentials")
 
@@ -194,9 +219,10 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/forgot_password")
-def forgot_password(request: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def forgot_password(request: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     try:
-        user = db.query(User).filter(User.email == request.email).first()
+        result = await db.execute(select(User).filter(User.email == request.email))
+        user = result.scalar()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -205,7 +231,7 @@ def forgot_password(request: ForgotPasswordRequest, background_tasks: Background
 
         user.reset_otp = otp
         user.otp_expiry = expiry
-        db.commit()
+        await db.commit()
 
         background_tasks.add_task(
             send_email,
@@ -219,11 +245,12 @@ def forgot_password(request: ForgotPasswordRequest, background_tasks: Background
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/reset_password")
-def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
     try:
         email = request.email.strip().lower()
         
-        user = db.query(User).filter(User.email == email).first()
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalar()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -238,9 +265,9 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/change-password")
-def change_password(
+async def change_password(
     request: ChangePasswordRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:
@@ -264,7 +291,7 @@ def change_password(
 
         current_user.password = hash_password(request.new_password)
         db.add(current_user)
-        db.commit()
+        await db.commit()
         db.refresh(current_user)
 
         return {"message": "Password changed successfully"}
@@ -272,9 +299,10 @@ def change_password(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.patch("/update-password")
-def update_password(request: PasswordUpdateRequest, db: Session = Depends(get_db)):
+async def update_password(request: PasswordUpdateRequest, db: AsyncSession = Depends(get_db)):
     try:
-        user = db.query(User).filter(User.email == request.email).first()
+        user = await db.execute(select(User).filter(User.email == request.email))
+        user = user.scalar()
 
         if not user:
             raise HTTPException(
@@ -289,7 +317,7 @@ def update_password(request: PasswordUpdateRequest, db: Session = Depends(get_db
             )
 
         user.password = hash_password(request.new_password)
-        db.commit()
+        await db.commit()
 
         return {"message": "Password updated successfully"}
     except Exception as e:

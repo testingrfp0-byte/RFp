@@ -17,14 +17,16 @@ from app.api.routes.utils import get_current_user
 from app.services.admin_services import upload_documents,get_final_answer,clean_text,add_footer_page_numbers,add_formatted_text,extract_question_number
 from app.services.admin_services.file_service import upload_background_document
 from app.schemas.schema import FileDetails
-
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+   
 router = APIRouter()
 
 @router.post("/generate-rfp-doc/")
 async def generate_rfp_doc(
     rfp_id: int,
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role.lower() != "admin":
@@ -33,10 +35,13 @@ async def generate_rfp_doc(
             detail="Unauthorized"
         )
 
-    rfp_doc = db.query(RFPDocument).filter(
-        RFPDocument.id == rfp_id,
-        RFPDocument.is_deleted == False
-    ).first()
+    rfp_doc = await db.execute(
+        select(RFPDocument).filter(
+            RFPDocument.id == rfp_id,
+            RFPDocument.is_deleted == False
+        )
+    )
+    rfp_doc = rfp_doc.scalar()
 
     if not rfp_doc:
         raise HTTPException(status_code=404, detail="RFP not found")
@@ -69,19 +74,19 @@ async def generate_rfp_doc(
             detail="Executive summary not found"
         )
 
-    questions = (
-        db.query(RFPQuestion)
-        .filter(RFPQuestion.rfp_id == rfp_id)
-        .order_by(
+    questions = await db.execute(
+        select(RFPQuestion).filter(RFPQuestion.rfp_id == rfp_id).order_by(
             RFPQuestion.assigned_at.asc(),
             RFPQuestion.id.asc()
         )
-        .all()
     )
+    questions = questions.scalars().all()
 
-    last_version = db.query(func.max(GeneratedRFPDocument.version)) \
-        .filter(GeneratedRFPDocument.rfp_id == rfp_id) \
-        .scalar() or 0
+    last_version = await db.execute(
+        select(func.max(GeneratedRFPDocument.version)) \
+            .filter(GeneratedRFPDocument.rfp_id == rfp_id)
+    )
+    last_version = last_version.scalar() or 0
 
     new_version = last_version + 1
 
@@ -173,7 +178,7 @@ async def generate_rfp_doc(
 @router.get("/list-rfp-docs/")
 async def list_rfp_docs(
     request: Request,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role.lower() != "admin":
@@ -182,12 +187,12 @@ async def list_rfp_docs(
             detail="Unauthorized"
         )
 
-    docs = (
-        db.query(GeneratedRFPDocument)
+    docs = await db.execute(
+        select(GeneratedRFPDocument)
         .filter(GeneratedRFPDocument.is_deleted == False)
         .order_by(GeneratedRFPDocument.generated_at.desc())
-        .all()
     )
+    docs = docs.scalars().all()
 
     base_url = str(request.base_url).rstrip("/")
 
@@ -207,11 +212,11 @@ async def list_rfp_docs(
     }
 
 @router.post("/upload-library")
-def upload_library_new(
+async def upload_library_new(
     files: List[UploadFile] = File(...),
     project_name: str = Form(...),
     category: str = Form(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     provider: str = Form(...),
     custom_message: str = Form(None)
@@ -239,10 +244,10 @@ def upload_library_new(
         )
 
 @router.post("/upload-client-industry-background")
-def upload_client_industry_background(
+async def upload_client_industry_background(
     file: UploadFile = File(...),
     project_name: str = Form(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role.lower() != "admin":
@@ -252,7 +257,7 @@ def upload_client_industry_background(
         )
 
     try:
-        uploaded_doc = upload_background_document(
+        uploaded_doc = await upload_background_document(
             file=file,
             project_name=project_name,
             category="Client_and_Industry_Background",
@@ -267,15 +272,15 @@ def upload_client_industry_background(
 
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=409,
-            detail="This client and industry background document already exists."
+            detail=f"An error occurred while uploading the document: {e}"
         )
 
 @router.get("/client-industry-background", response_model=List[FileDetails])
-def list_client_industry_background_documents(
-    db: Session = Depends(get_db),
+async def list_client_industry_background_documents(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):  
     if current_user.role.lower() != "admin":
@@ -284,32 +289,34 @@ def list_client_industry_background_documents(
             detail="Only admins can view client and industry background documents."
         )
 
-    documents = (
-        db.query(RFPDocument)
-        .filter(
+    documents = await db.execute(
+        select(RFPDocument).filter(
             RFPDocument.admin_id == current_user.id,
             RFPDocument.category == "Client_and_Industry_Background",
             RFPDocument.is_deleted == False
         )
         .order_by(RFPDocument.uploaded_at.desc())
-        .all()
     )
 
-    return documents
+    return documents.scalars().all()
 
 @router.get("/documents/{doc_id}/download")
-def download_generated_document(
+async def download_generated_document(
     doc_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role.lower() != "admin":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    doc = db.query(GeneratedRFPDocument).filter(
-        GeneratedRFPDocument.id == doc_id,
-        GeneratedRFPDocument.is_deleted == False
-    ).first()
+    doc = await db.execute(
+        select(GeneratedRFPDocument).filter(
+            GeneratedRFPDocument.id == doc_id,
+            GeneratedRFPDocument.is_deleted == False
+        )
+    )
+    doc = doc.scalar()
+
 
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -327,18 +334,21 @@ def download_generated_document(
     )
 
 @router.delete("/delete-gen-doc/{doc_id}")
-def delete_generated_document(
+async def delete_generated_document(
     doc_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role.lower() != "admin":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    doc = db.query(GeneratedRFPDocument).filter(
-        GeneratedRFPDocument.id == doc_id,
-        GeneratedRFPDocument.is_deleted == False
-    ).first()
+    doc = await db.execute(
+        select(GeneratedRFPDocument).filter(
+            GeneratedRFPDocument.id == doc_id,
+            GeneratedRFPDocument.is_deleted == False
+        )
+    )
+    doc = doc.scalar()
 
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -354,4 +364,3 @@ def delete_generated_document(
         "message": "Document deleted successfully",
         "document_id": doc_id
     }
-

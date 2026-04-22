@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User
 from fastapi import HTTPException
@@ -8,34 +9,35 @@ from app.services.user_services.user_validator import UserValidator
 from app.services.user_services.user_business_logic import UserBusinessLogic
 from app.services.llm_services.llm_service import get_short_name,get_active_keystone_text
 from app.models.rfp_models import ReviewerAnswerVersion
+from sqlalchemy.ext.asyncio import AsyncSession
 
 class UserService:
     """Service for user operations"""
     
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
         self.repository = UserRepository()
         self.validator = UserValidator()
         self.business_logic = UserBusinessLogic(db)
     
-    def get_assigned_questions(self, current_user: User) -> List[Dict[str, Any]]:
+    async def get_assigned_questions(self, current_user: User) -> List[Dict[str, Any]]:
         """Get all assigned questions for current user"""
         try:
-            assignments = self.repository.get_user_assignments(self.db, current_user.id)
+            assignments = await self.repository.get_user_assignments(self.db, current_user.id)
             
             results = []
             for question, reviewer in assignments:
-                result = self.business_logic.build_assigned_question_response(question, reviewer)
+                result = await self.business_logic.build_assigned_question_response(question, reviewer)
                 results.append(result)
             
             return results
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    def generate_answer(self, current_user: User, question_id: int, provider: str = "openai") -> Dict[str, Any]:
+    async def generate_answer(self, current_user: User, question_id: int, provider: str = None) -> Dict[str, Any]:
         """Generate answer for a specific question"""
         try:
-            assignment = self.repository.get_question_assignment(
+            assignment = await self.repository.get_question_assignment(
                 self.db, 
                 current_user.id, 
                 question_id
@@ -47,12 +49,12 @@ class UserService:
             rfp_id = question.rfp_id
             question_text = question.question_text
             
-            rfp_document = self.repository.get_rfp_document(self.db, rfp_id)
+            rfp_document = await self.repository.get_rfp_document(self.db, rfp_id)
             self.validator.validate_rfp_document_exists(rfp_document)
             
             short_name = get_short_name(rfp_document.filename)
-            keystone_text = get_active_keystone_text(self.db, question.admin_id)
-            enhanced_context, sources = self.business_logic.generate_enhanced_context(
+            keystone_text = await get_active_keystone_text(self.db, question.admin_id)
+            enhanced_context, sources = await  self.business_logic.generate_enhanced_context(
                 question_text=question_text,
                 rfp_id=rfp_id,
                 admin_id=question.admin_id
@@ -142,28 +144,27 @@ class UserService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
       
-    def submit_answer(
+    async def submit_answer(
             self,
             current_user: User,
             question_id: int,
             status: str) -> Dict[str, Any]:
         try:
             self.validator.validate_submission_status(status)
-            reviewer = self.repository.get_reviewer(
+            reviewer = await self.repository.get_reviewer(
                 self.db,
                 current_user.id,
                 question_id
             )
             self.validator.validate_reviewer_exists(reviewer)
 
-            latest_version = (
-                self.db.query(ReviewerAnswerVersion)
+            latest_version = await self.db.execute(
+                select(ReviewerAnswerVersion)
                 .filter(
                     ReviewerAnswerVersion.user_id == current_user.id,
                     ReviewerAnswerVersion.ques_id == question_id
                 )
                 .order_by(ReviewerAnswerVersion.generated_at.desc())
-                .first()
             )
 
             if not latest_version:
@@ -178,7 +179,7 @@ class UserService:
             reviewer.status = "pending"
             reviewer.submitted_at = datetime.utcnow()
 
-            self.db.commit()
+            await self.db.commit()
 
             return {
                 "message": "Submission successful",
@@ -193,10 +194,10 @@ class UserService:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
 
-    def check_user_status(self, current_user: User) -> Dict[str, Any]:
+    async def check_user_status(self, current_user: User) -> Dict[str, Any]:
         """Check status of all user assignments"""
         try:
-            reviewers = self.repository.get_all_user_reviewers(self.db, current_user.id)
+            reviewers = await self.repository.get_all_user_reviewers(self.db, current_user.id)
             data = self.business_logic.build_user_status_data(reviewers)
             
             return {
@@ -209,12 +210,12 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    def filter_by_status(self, current_user: User, status: str) -> Dict[str, Any]:
+    async def filter_by_status(self, current_user: User, status: str) -> Dict[str, Any]:
         """Filter user's questions by status"""
         try:
             status = self.validator.validate_filter_status(status)
             
-            reviewers = self.repository.get_all_user_reviewers(self.db, current_user.id)
+            reviewers = await self.repository.get_all_user_reviewers(self.db, current_user.id)
             
             if not reviewers:
                 return {
@@ -236,13 +237,13 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    def analyze_question(self, rfp_id: int, question_id: int, current_user: User) -> Dict[str, Any]:
+    async def analyze_question(self, rfp_id: int, question_id: int, current_user: User) -> Dict[str, Any]:
         """Analyze a single question and calculate score"""
         try:
-            question = self.repository.get_question_by_id(self.db, question_id, rfp_id)
+            question = await self.repository.get_question_by_id(self.db, question_id, rfp_id)
             self.validator.validate_question_exists(question)
             
-            reviewer_answer = self.repository.get_reviewer(self.db, current_user.id, question_id)
+            reviewer_answer = await self.repository.get_reviewer(self.db, current_user.id, question_id)
             answer_text = reviewer_answer.ans if reviewer_answer and reviewer_answer.ans else ""
             
             score = self.business_logic.calculate_answer_score(

@@ -6,31 +6,31 @@ from app.api.routes.utils import get_current_user
 from app.schemas.schema import UpdateAnswerRequest
 from app.services.user_services.user_service import UserService
 from fastapi import HTTPException
-
+from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter()
 
 @router.get("/assigned-questions")
-def get_assigned_questions(
-    db: Session = Depends(get_db),
+async def get_assigned_questions(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:
         service = UserService(db)
-        return service.get_assigned_questions(current_user)
+        return await service.get_assigned_questions(current_user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/generate-answers/{question_id}")
-def generate_answers(
+async def generate_answers(
     question_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    provider: str = Form(...)
+    provider: str = "openai"
 ):
     try:
         service = UserService(db)
-        return service.generate_answer(current_user, question_id, provider)
+        return await service.generate_answer(current_user, question_id, provider)
     except HTTPException:
         raise
     except Exception as e:
@@ -38,9 +38,9 @@ def generate_answers(
 
 
 @router.get("/answers/{question_id}/versions")
-def get_answer_versions(
+async def get_answer_versions(
     question_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:
@@ -51,32 +51,32 @@ def get_answer_versions(
 
 
 @router.patch('/update-answer/{question_id}')
-def update_answer_endpoint(
+async def update_answer_endpoint(
     question_id: int,
     request: UpdateAnswerRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:
         service = UserService(db)
-        return service.update_answer(current_user, question_id, request.answer)
+        return await service.update_answer(current_user, question_id, request.answer)
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.patch('/submit')
-def submit(
+async def submit(
     question_id: int,
     status: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:
         service = UserService(db)
-        return service.submit_answer(current_user, question_id, status)
+        return await service.submit_answer(current_user, question_id, status)
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
@@ -84,10 +84,10 @@ def submit(
 
 
 @router.get('/get_user_status')
-def check(db: Session = Depends(get_db),current_user: User = Depends(get_current_user)):
+async def check(db: AsyncSession = Depends(get_db),current_user: User = Depends(get_current_user)):
     try:
         service = UserService(db)
-        return service.check_user_status(current_user)
+        return await service.check_user_status(current_user)
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:
@@ -95,14 +95,14 @@ def check(db: Session = Depends(get_db),current_user: User = Depends(get_current
 
 
 @router.get('/filter-questions-by-user/{status}')
-def filter_questions_by_status(
+async def filter_questions_by_status(
     status: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:
         service = UserService(db)
-        return service.filter_by_status(current_user, status)
+        return await service.filter_by_status(current_user, status)
     except HTTPException:
         raise
     except Exception as e:
@@ -110,10 +110,10 @@ def filter_questions_by_status(
 
 
 @router.post("/analyze-question")
-def analyze_single(
+async def analyze_single(
     rfp_id: int,
     question_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     try:

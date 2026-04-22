@@ -5,29 +5,37 @@ from app.schemas.schema import NotificationRequest
 from fastapi import Depends, HTTPException, APIRouter
 from app.models.rfp_models import User, Reviewer, RFPQuestion
 from fastapi_mail import FastMail, MessageSchema, MessageType
-
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 router = APIRouter()
 
 @router.post("/send-assignment-notification")
 async def send_assignment_notification_bulk(
-    request: NotificationRequest, db: Session = Depends(get_db)
+    request: NotificationRequest, db: AsyncSession = Depends(get_db)
 ):
     try:
         fm = FastMail(mail_config)
         summary = []
 
         for uid in request.user_id:
-            user = db.query(User).filter(User.id == uid).first()
+            user = await db.execute(select(User).filter(User.id == uid))
+            user = user.scalar()
             if not user or not user.email:
                 continue
 
             questions = []
             for ques_id in request.ques_ids:
-                assignment = db.query(Reviewer).filter(
-                    Reviewer.ques_id == ques_id,
-                    Reviewer.user_id == uid
-                ).first()
-                question = db.query(RFPQuestion).filter(RFPQuestion.id == ques_id).first()
+                assignment = await db.execute(
+                    select(Reviewer).filter(
+                        Reviewer.ques_id == ques_id,
+                        Reviewer.user_id == uid
+                    )
+                )
+                assignment = assignment.scalar()
+                question = await db.execute(
+                    select(RFPQuestion).filter(RFPQuestion.id == ques_id)
+                )
+                question = question.scalar()
 
                 if assignment and question:
                     questions.append((question, assignment))

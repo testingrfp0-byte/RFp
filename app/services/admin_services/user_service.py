@@ -4,10 +4,11 @@ from sqlalchemy.orm import Session
 from app.models.rfp_models import User, RFPQuestion, Reviewer, ReviewerAnswerVersion
 from app.schemas.schema import UserOut, reviwerdelete
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import desc
+from sqlalchemy import desc, select, delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
-def get_all_users(db: Session, current_user):
+async def get_all_users(db: AsyncSession, current_user):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -15,7 +16,8 @@ def get_all_users(db: Session, current_user):
                 detail="Only admins can access User details."
             )
 
-        users = db.query(User).order_by(desc((User.id))).all()
+        users = await db.execute(select(User).order_by(desc((User.id))))
+        users = users.scalars().all()
 
         return [
             UserOut(
@@ -30,18 +32,17 @@ def get_all_users(db: Session, current_user):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_assigned_users(db: Session, current_user):
+async def get_assigned_users(db: Session, current_user):
     try:
         if current_user.role != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only admins can access assigned user details."
             )
-        assigned_user_ids = (
-            db.query(RFPQuestion.assigned_user_id)
+        assigned_user_ids = await db.execute(
+            select(RFPQuestion.assigned_user_id)
             .filter(RFPQuestion.assigned_user_id != None)
             .distinct()
-            .all()
         )
 
         user_ids = [uid[0] for uid in assigned_user_ids]
@@ -49,7 +50,8 @@ def get_assigned_users(db: Session, current_user):
         if not user_ids:
             return {"message": "No users assigned to any question", "users": []}
 
-        users = db.query(User).filter(User.id.in_(user_ids)).all()
+        users = await db.execute(select(User).filter(User.id.in_(user_ids)))
+        users = users.scalars().all()
 
         return [
             {
@@ -64,9 +66,10 @@ def get_assigned_users(db: Session, current_user):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def get_user_by_id_service(user_id: int, db: Session):
+async def get_user_by_id_service(user_id: int, db: AsyncSession):
     try:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = await db.execute(select(User).filter(User.id == user_id))
+        user = user.scalar()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -86,22 +89,26 @@ def get_user_by_id_service(user_id: int, db: Session):
         raise HTTPException(status_code=401, detail=str(e))
 
 async def update_profile_service(
-    db: Session,
+    db: AsyncSession,
     current_user,
     username: str | None = None,
     email: str | None = None,
     image_base64: str | None = None,
     image_name: str | None = None,
 ):
-    user = db.query(User).filter(User.id == current_user.id).first()
+    user = await db.execute(select(User).filter(User.id == current_user.id))
+    user = user.scalar()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     if username and username != user.username:
-        existing_user = db.query(User).filter(
-            User.username == username,
-            User.id != current_user.id
-        ).first()
+        existing_user = await db.execute(
+            select(User).filter(
+                User.username == username,
+                User.id != current_user.id
+            )
+        )
+        existing_user = existing_user.scalar()
         if existing_user:
             raise HTTPException(
                 status_code=400, 
@@ -110,10 +117,13 @@ async def update_profile_service(
         user.username = username
 
     if email and email != user.email:
-        existing_email = db.query(User).filter(
-            User.email == email,
-            User.id != current_user.id
-        ).first()
+        existing_email = await db.execute(
+            select(User).filter(
+                User.email == email,
+                User.id != current_user.id
+            )
+        )
+        existing_email = existing_email.scalar()
         if existing_email:
             raise HTTPException(
                 status_code=400, 
@@ -133,10 +143,10 @@ async def update_profile_service(
         user.image = image_name
 
     try:
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
     except IntegrityError as e:
-        db.rollback()
+        await db.rollback()
         if "username" in str(e.orig):
             raise HTTPException(status_code=400, detail="Username already exists")
         elif "email" in str(e.orig):
@@ -151,8 +161,9 @@ async def update_profile_service(
         "image_name": user.image
     }
 
-async def delete_reviewer_service(request: reviwerdelete, db: Session):
-    user = db.query(User).filter(User.id == request.user_id).first()
+async def delete_reviewer_service(request: reviwerdelete, db: AsyncSession):
+    user = await db.execute(select(User).filter(User.id == request.user_id))
+    user = user.scalars().first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -165,16 +176,29 @@ async def delete_reviewer_service(request: reviwerdelete, db: Session):
             detail=f"User role mismatch. Expected '{request.role}', found '{user.role}'."
         )
 
-    db.query(ReviewerAnswerVersion).filter(
-        ReviewerAnswerVersion.user_id == request.user_id
-    ).delete(synchronize_session=False)
+    if user.role != request.role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"User role mismatch. Expected '{request.role}', found '{user.role}'."
+        )
 
-    db.query(Reviewer).filter(
-        Reviewer.user_id == request.user_id
-    ).delete(synchronize_session=False)
 
-    db.delete(user)
-    db.commit()
+    await db.execute(
+        delete(ReviewerAnswerVersion).where(
+            ReviewerAnswerVersion.user_id == request.user_id
+        )
+    )
+
+    await db.execute(
+        delete(Reviewer).where(
+            Reviewer.user_id == request.user_id
+        )
+    )
+
+
+    await db.delete(user)
+    await db.commit()
+
 
     return {
         "message": f"User (id={request.user_id}, role={user.role}) "

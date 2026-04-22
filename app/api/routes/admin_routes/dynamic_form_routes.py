@@ -8,12 +8,14 @@ from app.schemas.schema import (KeystoneFileResponse)
 from app.models.rfp_models import User,KeystoneFile
 from app.api.routes.utils import get_current_user
 from app.services.admin_services.keystone_service import upload_keystone_file,delete_keystone_file,view_keystone_file
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 router = APIRouter()
 
 @router.post("/keystone/upload")
 async def upload_keystone(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     
@@ -24,8 +26,8 @@ async def upload_keystone(
     )
 
 @router.get("/keystone/files", response_model=List[KeystoneFileResponse])
-def list_keystone_files(
-    db: Session = Depends(get_db),
+async def list_keystone_files(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if current_user.role.lower() != "admin":
@@ -34,19 +36,19 @@ def list_keystone_files(
             detail="Only admins can view Keystone files"
         )
 
-    files = (
-        db.query(KeystoneFile)
+    files = await db.execute(
+        select(KeystoneFile)
         .filter(KeystoneFile.admin_id == current_user.id)
         .order_by(KeystoneFile.uploaded_at.desc())
-        .all()
-    )
+     )
+    files = files.scalars().all()
 
     return files
 
 @router.delete("/keystone/delete/{keystone_id}")
-def delete_keystone(
+async def delete_keystone(
     keystone_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     return delete_keystone_file(
@@ -56,9 +58,9 @@ def delete_keystone(
     )
 
 @router.get("/keystone/files/{keystone_id}/view")
-def view_keystone(
+async def view_keystone(
     keystone_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     return view_keystone_file(

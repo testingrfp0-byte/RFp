@@ -27,6 +27,8 @@ from app.core.llm_client.openai import OpenAIEmbeddingClient
 from pathlib import Path
 from app.services.file_services.file_extracter import extract_text_from_file, SUPPORTED_EXTENSIONS
 from app.services.llm_services.llm_service import classification_QaI
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 class RFPExtractionError(Exception):
     """Raised when file reading or text extraction fails unexpectedly."""
@@ -35,7 +37,7 @@ class RFPExtractionError(Exception):
 async def process_rfp_file(
     file: UploadFile,
     project_name: str,
-    db: Session,
+    db: AsyncSession,
     current_user,
     provider: str = "openai",
     custom_message: str = None
@@ -50,11 +52,10 @@ async def process_rfp_file(
             raise HTTPException(status_code=400, detail="Uploaded file is empty.")
         
         file_hash = hashlib.md5(file_bytes).hexdigest()
-        existing_rfp = (
-            db.query(RFPDocument)
-            .filter(RFPDocument.file_hash == file_hash)
-            .first()
+        existing_rfp = await db.execute(
+            select(RFPDocument).filter(RFPDocument.file_hash == file_hash)
         )
+        existing_rfp = existing_rfp.scalar()
         if existing_rfp:
             raise HTTPException(
                 status_code=208,
@@ -71,13 +72,13 @@ async def process_rfp_file(
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         file_path = os.path.join(UPLOAD_FOLDER, dummy_filename)
 
-        # with open(file_path, "wb") as f:
-        #     f.write(file_bytes)
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
 
-        # rfp_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
+        rfp_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
 
-        # if not rfp_text or not rfp_text.strip():
-        #     return {"error": "PDF text is empty or not readable after extraction."}
+        if not rfp_text or not rfp_text.strip():
+            return {"error": "PDF text is empty or not readable after extraction."}
         # 1. Read bytes
 
         # 2. Validate extension
@@ -122,8 +123,8 @@ async def process_rfp_file(
             project_name=project_name
         )
         db.add(new_rfp)
-        db.commit()
-        db.refresh(new_rfp)
+        await db.commit()
+        await db.refresh(new_rfp)
 
         print(f"Processing RFP ID {new_rfp.id} with provider {provider}")
         print(f"Extracted text length: {len(rfp_text)} characters")
@@ -175,7 +176,7 @@ async def process_rfp_file(
                     admin_id=current_user.id
                 ))
 
-        db.commit()
+        await db.commit()
 
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
@@ -217,17 +218,16 @@ async def process_rfp_file(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def fetch_file_details(db: Session):
+async def fetch_file_details(db: AsyncSession):
     try:
-        documents = (
-            db.query(RFPDocument)
+        documents = await db.execute(
+            select(RFPDocument)
             .filter(RFPDocument.is_deleted == False)
             .filter(RFPDocument.category.isnot(None))
             .filter(func.trim(RFPDocument.category) != '')
-            .all()
         )
 
-        return documents
+        return documents.scalars().all()
     except Exception as e:
         print(e)
         raise HTTPException(
@@ -235,7 +235,7 @@ def fetch_file_details(db: Session):
             detail="Failed to fetch documents"
         )
 
-def delete_rfp_document_service(rfp_id: int, db: Session, current_user):
+async def delete_rfp_document_service(rfp_id: int, db: AsyncSession, current_user):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -243,7 +243,8 @@ def delete_rfp_document_service(rfp_id: int, db: Session, current_user):
                 detail="Only admins can delete docs."
             )
 
-        rfp = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+        rfp = await db.execute(select(RFPDocument).filter(RFPDocument.id == rfp_id))
+        rfp = rfp.scalar()
         if not rfp:
             raise HTTPException(
                 status_code=404,
@@ -252,7 +253,7 @@ def delete_rfp_document_service(rfp_id: int, db: Session, current_user):
 
         rfp.is_deleted = True
         rfp.deleted_at = datetime.utcnow()
-        db.commit()
+        await db.commit()
 
         return {
             "message": "RFP moved to trash. Work-in-progress is safely retained."
@@ -266,10 +267,13 @@ def delete_rfp_document_service(rfp_id: int, db: Session, current_user):
             detail=f"Failed to move RFP to trash: {str(e)}"
         )
 
-def view_rfp_document_service(rfp_id: int, db: Session):
+async def view_rfp_document_service(rfp_id: int, db: Session):
     try:
         import mimetypes
-        rfp_doc = db.query(RFPDocument).filter(RFPDocument.id == rfp_id).first()
+        result = await db.execute(
+            select(RFPDocument).where(RFPDocument.id == rfp_id)
+        )
+        rfp_doc = result.scalars().first()
         if not rfp_doc:
             raise HTTPException(status_code=404, detail="RFP document not found")
 
@@ -288,7 +292,7 @@ def view_rfp_document_service(rfp_id: int, db: Session):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def restore_rfp_doc(rfp_id: int, db: Session, current_user):
+async def restore_rfp_doc(rfp_id: int, db: AsyncSession, current_user):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -296,40 +300,39 @@ def restore_rfp_doc(rfp_id: int, db: Session, current_user):
                 detail="Only admins can restore docs."
             )
 
-        rfp = (
-            db.query(RFPDocument)
+        # ✅ removed .first() from inside execute()
+        rfp_result = await db.execute(
+            select(RFPDocument)
             .filter(RFPDocument.id == rfp_id, RFPDocument.is_deleted == True)
-            .first()
         )
+        rfp = rfp_result.scalars().first()  # ✅ scalars().first()
 
         if rfp:
             rfp.is_deleted = False
             rfp.deleted_at = None
-            db.commit()
+            await db.commit()
             return {"message": "RFP restored successfully."}
 
-        gen_doc = (
-            db.query(GeneratedRFPDocument)
+        # ✅ removed .first() from inside execute()
+        gen_doc_result = await db.execute(
+            select(GeneratedRFPDocument)
             .filter(
                 GeneratedRFPDocument.id == rfp_id,
                 GeneratedRFPDocument.is_deleted == True
             )
-            .first()
         )
+        gen_doc = gen_doc_result.scalars().first()  # ✅ scalars().first()
 
         if gen_doc:
             gen_doc.is_deleted = False
             gen_doc.deleted_at = None
-            db.commit()
+            await db.commit()
             return {"message": "Generated document restored successfully."}
 
-
-
-        # rfp.is_deleted = False
-        # rfp.deleted_at = None
-        # db.commit()
-
-        return {"message": "RFP restored successfully."}
+        raise HTTPException(  # ✅ added proper 404 instead of silent success
+            status_code=404,
+            detail="Document not found in Trash."
+        )
 
     except HTTPException as http_exc:
         raise http_exc
@@ -339,7 +342,7 @@ def restore_rfp_doc(rfp_id: int, db: Session, current_user):
             detail=f"Failed to restore RFP document: {str(e)}"
         )
 
-def permanent_delete_rfp(rfp_id: int, db: Session, current_user):
+async def permanent_delete_rfp(rfp_id: int, db: AsyncSession, current_user):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -347,11 +350,12 @@ def permanent_delete_rfp(rfp_id: int, db: Session, current_user):
                 detail="Only admins can permanently delete docs."
             )
 
-        rfp = (
-            db.query(RFPDocument)
+        # ✅ removed .first() from inside execute()
+        rfp_result = await db.execute(
+            select(RFPDocument)
             .filter(RFPDocument.id == rfp_id, RFPDocument.is_deleted == True)
-            .first()
         )
+        rfp = rfp_result.scalars().first()  # ✅ scalars().first()
 
         if rfp:
             if rfp.file_path and os.path.exists(rfp.file_path):
@@ -359,29 +363,30 @@ def permanent_delete_rfp(rfp_id: int, db: Session, current_user):
 
             delete_rfp_embeddings(rfp_id)
 
-            db.delete(rfp)
-            db.commit()
+            await db.delete(rfp)   # ✅ await db.delete()
+            await db.commit()
 
             return {"message": "RFP permanently deleted."}
-        
-        gen_doc = (
-            db.query(GeneratedRFPDocument)
+
+        # ✅ removed .first() from inside execute()
+        gen_doc_result = await db.execute(
+            select(GeneratedRFPDocument)
             .filter(
                 GeneratedRFPDocument.id == rfp_id,
                 GeneratedRFPDocument.is_deleted == True
             )
-            .first()
         )
+        gen_doc = gen_doc_result.scalars().first()  # ✅ scalars().first()
 
         if gen_doc:
             if gen_doc.file_path and os.path.exists(gen_doc.file_path):
                 os.remove(gen_doc.file_path)
 
-            db.delete(gen_doc)
-            db.commit()
+            await db.delete(gen_doc)  # ✅ await db.delete()
+            await db.commit()
 
             return {"message": "Generated document permanently deleted."}
-        
+
         raise HTTPException(
             status_code=404,
             detail="Document not found in Trash."
@@ -395,7 +400,7 @@ def permanent_delete_rfp(rfp_id: int, db: Session, current_user):
             detail=f"Failed to permanently delete RFP document: {str(e)}"
         )
 
-def get_trash_documents(db: Session, current_user):
+async def get_trash_documents(db: AsyncSession, current_user):
     try:
         if current_user.role != "admin":
             raise HTTPException(
@@ -404,11 +409,12 @@ def get_trash_documents(db: Session, current_user):
             )
 
         deleted_docs = (
-            db.query(RFPDocument)
-            .filter(RFPDocument.is_deleted == True).filter()
-            .order_by(RFPDocument.deleted_at.desc())
-            .all()
+            await db.execute(
+                select(RFPDocument)
+                .filter(RFPDocument.is_deleted == True)
+            )
         )
+        deleted_docs = deleted_docs.scalars().all()
 
         rfp_list = [
             {
@@ -428,11 +434,13 @@ def get_trash_documents(db: Session, current_user):
         ]
 
         deleted_generated_docs = (
-            db.query(GeneratedRFPDocument)
-            .filter(GeneratedRFPDocument.is_deleted == True)
-            .order_by(GeneratedRFPDocument.deleted_at.desc())
-            .all()
+            await db.execute(
+                select(GeneratedRFPDocument)
+                .filter(GeneratedRFPDocument.is_deleted == True)
+                .order_by(GeneratedRFPDocument.deleted_at.desc())
+            )
         )
+        deleted_generated_docs = deleted_generated_docs.scalars().all()
 
         generated_docs_list = [
             {

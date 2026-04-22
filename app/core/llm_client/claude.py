@@ -11,8 +11,8 @@ class ClaudeClient(BaseLLMClient):
         print(f"ClaudeClient: Completing with model '{self.model}'")
         msg = self.client.messages.create(
             model=self.model,
-            max_tokens=8096,
-            system=system,
+            max_tokens=18096,
+            # system=system,
             messages=[{"role": "user", "content": prompt}],
             **kwargs
         )

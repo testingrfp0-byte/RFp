@@ -16,6 +16,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, ns
 from docx import Document
 from docx.shared import Inches, Pt
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.llm_client.openai import OpenAIEmbeddingClient
 
@@ -116,7 +117,7 @@ def upload_documents(files, project_name, category, current_user, db: Session, p
 
     return uploaded_docs
 
-def upload_background_document(file, project_name, category, current_user, db: Session):
+async def upload_background_document(file, project_name, category, current_user, db: AsyncSession):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     uploaded_docs = []
     file_ext = os.path.splitext(file.filename)[1].lower()
@@ -155,8 +156,8 @@ def upload_background_document(file, project_name, category, current_user, db: S
         extracted_text=extracted_text
     )
     db.add(new_doc)
-    db.commit()
-    db.refresh(new_doc)
+    await  db.commit()
+    await db.refresh(new_doc)
 
 
     summary = generate_summary(extracted_text)

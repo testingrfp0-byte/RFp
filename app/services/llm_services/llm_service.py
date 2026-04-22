@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from app.models import * 
 import pandas as pd
 from PIL import Image
+from sqlalchemy import select
 
 load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -17,6 +18,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 from app.core.llm_client import get_llm_client
 from app.core.prompts import question_prompt,mode_block_prompt ,answer_generation_prompt, summary_and_analysis_prompt, summary_format_prompt, search_queries_prompt, generate_score_prompt, classification_prompt
 from app.core.llm_client.openai import OpenAIEmbeddingClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def extract_text_from_pdf(pdf_file: bytes) -> str:
@@ -220,7 +222,7 @@ def generate_answer_with_context(
     short_name: str,
     existing_answer: str = None,
     edit_instruction: str = None,
-    provider: str = "openai"
+    provider: str = None
 ) -> str:
     """
     Generate a new proposal response OR apply a targeted edit to an existing one.
@@ -379,7 +381,7 @@ def extract_text_from_file(file_path: str) -> str:
 
 
 
-def generate_summary(text: str, provider: str = "openai") -> str:
+def generate_summary(text: str, provider: str = "gpt-4o-mini") -> str:
     """Generate summary of an RFP using LLM."""
     prompt = f"Summarize the following RFP in 3-5 paragraphs:\n\n{text[:8000]}"
     client = get_llm_client(provider)
@@ -436,25 +438,24 @@ def bump_version(version: str) -> str:
 
     return None
 
-def get_next_index(rfp_id: int, user_id: int, question: str, db: Session) -> float:
-    last_question = (
-        db.query(RFPQuestion)
+async def get_next_index(rfp_id: int, user_id: int, question: str, db: AsyncSession) -> str:
+    last_question_result = await db.execute(
+        select(RFPQuestion.question_text)
         .filter(
             RFPQuestion.rfp_id == rfp_id,
             RFPQuestion.admin_id == user_id
         )
         .order_by(RFPQuestion.id.desc())
-        .first() 
-    ).question_text
-
-    index = last_question.split(" ")[0] if last_question else None
+    )
+    last_question = last_question_result.scalars().first()
+    index = last_question.split(" ")[0] if last_question else "0"
 
     new_index = None
     if index:
         try:
             new_index = bump_version(index)
         except Exception as e:
-            new_index = ""
+            new_index = "0"
     
     return f"{new_index} {question}"
 
@@ -470,8 +471,11 @@ def clean_extracted_text(text: str) -> str:
 
     return text.strip()
 
-def get_active_keystone_text(db: Session, admin_id: int) -> str:
-    keystone = db.query(KeystoneFile).filter(KeystoneFile.admin_id == admin_id).order_by(KeystoneFile.uploaded_at.desc()).first()
+async def get_active_keystone_text(db: AsyncSession, admin_id: int) -> str:
+    keystone_result = await db.execute(
+        select(KeystoneFile).filter(KeystoneFile.admin_id == admin_id).order_by(KeystoneFile.uploaded_at.desc())
+    )
+    keystone = keystone_result.scalars().first()
     if not keystone:
         raise HTTPException(
             status_code=400,
@@ -522,7 +526,7 @@ def classification_QaI(rfp_text: str, selected_sections: list, provider) -> dict
     # )
     client = get_llm_client(provider)
     content = client.complete(prompt=prompt)
-    # print("Raw LLM output for classification:", content)
+    print("Raw LLM output for classification:", content)
 
     try:
         return json.loads(content)

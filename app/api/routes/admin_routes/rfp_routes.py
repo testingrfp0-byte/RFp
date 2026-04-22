@@ -1,27 +1,29 @@
 from typing import List
 from fastapi import (
     UploadFile, File, Form, Depends, HTTPException, APIRouter, status)
-from sqlalchemy.orm import Session
 from collections import defaultdict
 from app.db.database import get_db
 from app.schemas.schema import (
     FileDetails, RFPDocumentGroupedQuestionsOut, 
     GroupedRFPQuestionOut, QuestionOut, QuestionInput)
-from app.models.rfp_models import User, RFPDocument, Reviewer
+from app.models.rfp_models import User, RFPDocument, RFPQuestion, Reviewer
 from app.api.routes.utils import get_current_user
 from app.services.admin_services import (
     process_rfp_file, fetch_file_details,
     filter_question_service, delete_rfp_document_service,
     view_rfp_document_service, add_ques, restore_rfp_doc,
     permanent_delete_rfp, get_trash_documents, delete_question)
-
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from starlette import status as http_status
 router = APIRouter()
 
 @router.post("/search-related-summary/")
 async def search_related_summary(
     file: UploadFile = File(...),
     project_name: str = Form(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     provider: str = Form(...),
     custom_message: str = Form(None)
@@ -36,8 +38,8 @@ async def search_related_summary(
     return await process_rfp_file(file, project_name, db, current_user, provider,custom_message)
 
 @router.get("/filedetails", response_model=List[FileDetails])
-def get_file_details(
-    db: Session = Depends(get_db),
+async def get_file_details(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role != "admin":
@@ -46,51 +48,67 @@ def get_file_details(
             detail="Only admins can access File details."
         )
 
-    return fetch_file_details(db)
+    return await fetch_file_details(db)
 
-@router.get("/rfpdetails/{document_id}/{status}", response_model=RFPDocumentGroupedQuestionsOut)
-def get_rfp_details(
+
+@router.get("/rfpdetails/{document_id}/{rfp_status}", response_model=RFPDocumentGroupedQuestionsOut)
+async def get_rfp_details(
     document_id: int,
-    status: str,
-    db: Session = Depends(get_db),
+    rfp_status: str,          # ✅ renamed from 'status' to avoid conflict
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role != "admin":
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
             detail="Only admins can access RFP details."
         )
 
     valid_statuses = ["assigned", "unassigned", "total question"]
-    if status not in valid_statuses:
+    if rfp_status not in valid_statuses:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid status. Allowed values: {valid_statuses}"
         )
 
-    document = (
-        db.query(RFPDocument)
+    document_result = await db.execute(
+        select(RFPDocument)
+        .options(selectinload(RFPDocument.summary))
         .filter(RFPDocument.id == document_id)
-        .first()
     )
+    document = document_result.scalars().first()
 
     if not document:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="RFP Document not found or access denied."
         )
 
+    # ✅ extract all values while session is still active
+    doc_id = document.id
+    doc_filename = document.filename
+    doc_uploaded_at = document.uploaded_at
+    doc_summary = document.summary
+
+    questions_result = await db.execute(
+        select(RFPQuestion)
+        .filter(RFPQuestion.rfp_id == document_id)
+        .order_by(RFPQuestion.id.asc())
+    )
+    questions = questions_result.scalars().all()
+
     grouped = defaultdict(list)
 
-    for q in sorted(document.questions, key=lambda x: x.id):
-        reviewers = db.query(Reviewer).filter(Reviewer.ques_id == q.id).all()
+    for q in questions:
+        reviewers_result = await db.execute(
+            select(Reviewer).filter(Reviewer.ques_id == q.id)
+        )
+        reviewers = reviewers_result.scalars().all()
 
-        if status == "assigned" and not reviewers:
+        if rfp_status == "assigned" and not reviewers:
             continue
-        elif status == "unassigned" and reviewers:
+        elif rfp_status == "unassigned" and reviewers:
             continue
-        elif status == "total-question":
-            pass
 
         grouped[q.section].append({
             "id": q.id,
@@ -100,23 +118,23 @@ def get_rfp_details(
     grouped_questions = [
         GroupedRFPQuestionOut(
             section=section,
-            questions=[QuestionOut(**q) for q in questions]
+            questions=[QuestionOut(**q) for q in qs]  # ✅ fixed variable name (was shadowing `questions`)
         )
-        for section, questions in grouped.items()
+        for section, qs in grouped.items()
     ]
 
     return {
-        "id": document.id,
-        "filename": document.filename,
-        "uploaded_at": document.uploaded_at,
-        "summary": document.summary,
+        "id": doc_id,
+        "filename": doc_filename,
+        "uploaded_at": doc_uploaded_at,
+        "summary": doc_summary,          # ✅ already extracted above
         "questions_by_section": grouped_questions
     }
 
 @router.get("/rfp-documents/{rfp_id}/view")
-def view_rfp_document(
+async def view_rfp_document(
     rfp_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     if current_user.role != "admin":
@@ -125,60 +143,60 @@ def view_rfp_document(
             detail="Only admins can view documents."
         )
 
-    return view_rfp_document_service(rfp_id, db)
+    return await view_rfp_document_service(rfp_id, db)
 
 @router.delete("/rfp/{rfp_id}")
-def delete_rfp_document(
+async def delete_rfp_document(
     rfp_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return delete_rfp_document_service(rfp_id, db, current_user)
+    return await delete_rfp_document_service(rfp_id, db, current_user)
 
 @router.get("/filter/{rfp_id}")
-def filter_question(
+async def filter_question(
     rfp_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return filter_question_service(rfp_id, db, current_user)
+    return await filter_question_service(rfp_id, db, current_user)
 
 @router.post("/add/questions/{rfp_id}")
-def add_questions(
+async def add_questions(
     rfp_id: int,
     request: QuestionInput,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return add_ques(rfp_id, request, db, current_user)
+    return await add_ques(rfp_id, request, db, current_user)
 
 @router.post("/rfp/{rfp_id}/restore")
-def restore_rfp_document(
+async def restore_rfp_document(
     rfp_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return restore_rfp_doc(rfp_id, db, current_user)
+    return await restore_rfp_doc(rfp_id, db, current_user)
 
 @router.delete("/rfp/{rfp_id}/permanent")
-def permanent_delete_doc(
+async def permanent_delete_doc(
     rfp_id: int,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return permanent_delete_rfp(rfp_id, db, current_user)
+    return await permanent_delete_rfp(rfp_id, db, current_user)
 
 @router.get("/rfp/trash")
-def get_trash_doc(
-    db: Session = Depends(get_db),
+async def get_trash_doc(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return get_trash_documents(db, current_user)
+    return await get_trash_documents(db, current_user)
 
 @router.delete("/delete/questions/{question_id}")
-def delete_ques_workin_progress(
+async def delete_ques_workin_progress(
     question_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    return delete_question(question_id,db,current_user)
+    return await delete_question(question_id, db, current_user)
