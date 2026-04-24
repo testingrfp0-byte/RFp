@@ -4,6 +4,7 @@ import hashlib
 import asyncio
 from sqlalchemy import func
 from datetime import datetime
+from app.core.timer import Timer
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException, status
 from fastapi.responses import FileResponse
@@ -42,20 +43,27 @@ async def process_rfp_file(
     provider: str = "openai",
     custom_message: str = None
 ):
+    timer = Timer()
+
     try:
-        try:
-            file_bytes = await file.read()
-        except Exception as e:
-            raise RFPExtractionError(f"Failed to read uploaded file: {e}") from e
+        # =========================
+        # FILE READ
+        # =========================
+        file_bytes = await file.read()
+        timer.log("file_read")
 
         if not file_bytes:
             raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-        
+
+        # =========================
+        # DUPLICATE CHECK
+        # =========================
         file_hash = hashlib.md5(file_bytes).hexdigest()
         existing_rfp = await db.execute(
             select(RFPDocument).filter(RFPDocument.file_hash == file_hash)
         )
         existing_rfp = existing_rfp.scalar()
+
         if existing_rfp:
             raise HTTPException(
                 status_code=208,
@@ -65,54 +73,43 @@ async def process_rfp_file(
                     "existing_rfp_id": existing_rfp.id
                 }
             )
-        
+        timer.log("duplicate_check")
+
+        # =========================
+        # SAVE FILE
+        # =========================
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         safe_original_name = os.path.basename(file.filename) if file.filename else "uploaded.pdf"
         dummy_filename = f"rfp_{timestamp}.pdf"
+
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
         file_path = os.path.join(UPLOAD_FOLDER, dummy_filename)
 
         with open(file_path, "wb") as f:
             f.write(file_bytes)
 
+        timer.log("file_save")
+
+        # =========================
+        # TEXT EXTRACTION
+        # =========================
         rfp_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
-
-        if not rfp_text or not rfp_text.strip():
-            return {"error": "PDF text is empty or not readable after extraction."}
-        # 1. Read bytes
-
-        # 2. Validate extension
-        original_name = Path(file.filename).name if file.filename else "upload.pdf"
-        ext = Path(original_name).suffix.lower()
-
-        if ext not in SUPPORTED_EXTENSIONS:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Unsupported file type '{ext}'. "
-                    f"Allowed: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
-                )
-            )
-
-        tmp_path = Path(UPLOAD_FOLDER) / f"tmp_{uuid.uuid4().hex}{ext}"
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-        try:
-            tmp_path.write_bytes(file_bytes)
-            raw_text: str = await asyncio.to_thread(extract_text_from_file, tmp_path)
-        finally:
-            tmp_path.unlink(missing_ok=True)   
-
-        rfp_text = clean_extracted_text(raw_text)
+        timer.log("pdf_extraction\n")
+        # print("\nrfp_text lenth",len(rfp_text))
+        # print("\nHere is the rfp text--------------------------",rfp_text)
 
         if not rfp_text.strip():
-            return {"error": "PDF text became empty after cleaning (likely non-text document)."}
-
-        if not rfp_text or not rfp_text.strip():
             raise HTTPException(status_code=422, detail="PDF has no readable text")
-        
-        if not rfp_text.strip():
-            raise HTTPException(status_code=422, detail="PDF became empty after cleaning")
 
+        # =========================
+        # CLEAN TEXT
+        # =========================
+        rfp_text = clean_extracted_text(rfp_text)
+        timer.log("text_cleaning")
+
+        # =========================
+        # SAVE TO DB
+        # =========================
         new_rfp = RFPDocument(
             filename=safe_original_name,
             file_path=file_path,
@@ -122,22 +119,37 @@ async def process_rfp_file(
             category="history",
             project_name=project_name
         )
+
         db.add(new_rfp)
         await db.commit()
         await db.refresh(new_rfp)
 
-        print(f"Processing RFP ID {new_rfp.id} with provider {provider}")
-        print(f"Extracted text length: {len(rfp_text)} characters")
+        timer.log("db_insert")
 
-        search_queries = generate_search_queries(rfp_text, provider)
-        # print(f"Generated {len(search_queries)} search queries for RFP ID {new_rfp.id}")
-        # classification_QaI_results = classification_QaI(rfp_text, selected_sections= [], provider=provider)
-        # print(classification_QaI_results)
-        questions_grouped = questions_grouped_function(rfp_text, custom_message, provider)
-        # print("Question  :"+questions_grouped)
 
-        # print(f"Extracted questions grouped by section for RFP ID {new_rfp.id}: {questions_grouped.keys()}")
-        company_rfp_text = extract_company_background_from_rfp(rfp_text, provider)
+        # search_queries = generate_search_queries(rfp_text, provider)
+        # timer.log("search_query_generation")
+
+        # questions_grouped = questions_grouped_function(
+        #     rfp_text, custom_message, provider
+        # )
+        # timer.log("question_generation")
+        # company_rfp_text = extract_company_background_from_rfp(
+        #     rfp_text, provider
+        # )
+        # timer.log("company_extraction")
+
+        search_queries, questions_grouped, company_rfp_text = await asyncio.gather(
+            asyncio.to_thread(generate_search_queries, rfp_text, provider),
+            asyncio.to_thread(questions_grouped_function, rfp_text,custom_message, provider),
+            asyncio.to_thread(extract_company_background_from_rfp, rfp_text,provider)
+        )
+
+        # Temporary debug
+        print(type(search_queries), type(questions_grouped), type(company_rfp_text))
+
+        timer.log("llm_parallel_process")
+        
 
         all_snippets = []
         for query in search_queries:
@@ -147,15 +159,21 @@ async def process_rfp_file(
                     snippet = item.get("snippet")
                     if snippet:
                         all_snippets.append(snippet)
-            except Exception as search_err:
-                print(f"[SERP Error] Query '{query}': {search_err}")
+            except Exception as e:
+                print(f"[SERP ERROR]: {e}")
 
-        raw_summary = summarize_results_with_llm(
+        timer.log("serp_search")
+
+
+        raw_summary = await summarize_results_with_llm(
             all_snippets,
             rfp_company_text=company_rfp_text,
             provider=provider
         )
+        timer.log("final_summary")
+
         structured_summary = parse_rfp_summary(raw_summary)
+        timer.log("summary_parsing")
 
         new_summary = CompanySummary(
             rfp_id=new_rfp.id,
@@ -167,16 +185,17 @@ async def process_rfp_file(
         for group_number, data in questions_grouped.items():
             section_name = data.get("section", f"Section {group_number}")
             for q in data.get("questions", []):
-                if not q:
-                    continue
-                db.add(RFPQuestion(
-                    rfp_id=new_rfp.id,
-                    question_text=q,
-                    section=section_name,
-                    admin_id=current_user.id
-                ))
+                if q:
+                    db.add(RFPQuestion(
+                        rfp_id=new_rfp.id,
+                        question_text=q,
+                        section=section_name,
+                        admin_id=current_user.id
+                    ))
 
         await db.commit()
+        timer.log("questions_save")
+
 
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
@@ -184,33 +203,59 @@ async def process_rfp_file(
         )
         chunks = splitter.split_text(rfp_text)
 
-        for i, chunk in enumerate(chunks):
-            try:
-                embedding_vector = OpenAIEmbeddingClient().embed(chunk)
+        try:
+            client = OpenAIEmbeddingClient()
+            
+            # Single API call for ALL chunks at once
+            embedding_vectors = client.embed(chunks)
 
-                index.upsert([
-                    {
-                        "id": str(uuid.uuid4()),
-                        "values": embedding_vector,
-                        "metadata": {
-                            "file_id": str(new_rfp.id),
-                            "chunk_index": i,
-                            "text": chunk
-                        }
+            # Build all vectors
+            vectors = [
+                {
+                    "id": str(uuid.uuid4()),
+                    "values": embedding_vector,
+                    "metadata": {
+                        "file_id": "rfp_" +str(new_rfp.id),
+                        "chunk_index": i,
+                        "text": chunk
                     }
-                ])
-            except Exception as embed_err:
-                print(f"[Embedding Error] Chunk {i}: {embed_err}")
+                }
+                for i, (chunk, embedding_vector) in enumerate(zip(chunks, embedding_vectors))
+            ]
 
+            # Batch upsert to Pinecone (100 at a time)
+            BATCH_SIZE = 100
+            for i in range(0, len(vectors), BATCH_SIZE):
+                index.upsert(vectors[i:i + BATCH_SIZE], namespace=f"rfp_{new_rfp.id}")
+
+        except Exception as e:
+            print(f"[Embedding Error]: {e}")
+
+        timer.log("embedding")
+
+        # =========================
+        # PRINT TIMINGS
+        # =========================
+        print("\n⏱️ TIMING BREAKDOWN:")
+        for k, v in timer.steps.items():
+            print(f"{k}: {v} sec")
+
+        total_time = timer.total()
+        print(f"TOTAL TIME: {total_time} sec\n")
+
+        # =========================
+        # FINAL RESPONSE
+        # =========================
         return {
             "status": "new",
             "rfp_id": new_rfp.id,
-            "saved_file": file_path,
-            "category": new_rfp.category,
-            "project_name": project_name,
             "summary": structured_summary,
             "total_questions": questions_grouped,
-            "embedded_chunks": len(chunks)
+            "embedded_chunks": len(chunks),
+            "timing": {
+                "steps": timer.steps,
+                "total_time": total_time
+            }
         }
 
     except HTTPException:

@@ -1,4 +1,4 @@
-import os,fitz,requests,re,math,docx,json,io,pytesseract
+import os,fitz,requests,re,math,docx,json,io,pytesseract,asyncio
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
@@ -79,32 +79,28 @@ def extract_company_background_from_rfp(rfp_text: str, provider: str) -> str:
 
     return content
 
-def summarize_results_with_llm(all_snippets: list, rfp_company_text: str, provider: str) -> str:
-    """
-    Combine RFP company description and web search snippets into a
-    structured, executive-level analysis with 4 fixed sections.
-    """
+async def summarize_results_with_llm(all_snippets: list, rfp_company_text: str, provider: str) -> str:
 
     combined_snippets = "\n".join(all_snippets)
-    prompt = summary_format_prompt(rfp_company_text, combined_snippets)
-    
     system_prompt = (
         "You are a meticulous senior RFP analyst and strategy consultant who produces "
-        "structured four-section analysis briefs. You extract and organize information with "
-        "perfect accuracy, never adding content not in the sources. "
-        "You ALWAYS preserve Scope of Work items exactly as provided in the input — "
-        "never merging, renaming, or inventing them, and never pulling items from Priorities "
-        "or Goals sections into the Scope breakdown. "
-        "You ensure Section 3 captures every single submission requirement without exception. "
-        "You always produce all six sub-sections of Section 4 with sharp, specific, "
-        "evidence-based strategic analysis that gives a responding agency a clear roadmap "
-        "to win — never generic advice. "
-        "Your output is comprehensive, accurate, and properly formatted for any RFP document."
+        "structured analysis briefs. You extract and organize information with perfect accuracy, "
+        "never adding content not in the sources."
     )
 
-    client = get_llm_client(provider)
-    content = client.complete(prompt=prompt, system=system_prompt)
-    return content
+    async def generate_section(section_num):
+        prompt = summary_format_prompt(section_num, rfp_company_text, combined_snippets)
+        client = get_llm_client(provider)
+        return await asyncio.to_thread(lambda: client.complete(prompt=prompt, system=system_prompt))
+
+    section1, section2, section3, section4 = await asyncio.gather(
+        generate_section(1),
+        generate_section(2),
+        generate_section(3),
+        generate_section(4),
+    )
+
+    return f"{section1}\n\n---\n\n{section2}\n\n---\n\n{section3}\n\n---\n\n{section4}"
 
 def extract_questions_with_llm(classification_QaI_results: str, provider: str):
     
