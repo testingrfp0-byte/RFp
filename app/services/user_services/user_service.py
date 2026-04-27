@@ -34,7 +34,7 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    async def generate_answer(self, current_user: User, question_id: int, provider: str = None) -> Dict[str, Any]:
+    async def generate_answer(self, current_user: User, question_id: int, provider: str = "gpt-4o-mini") -> Dict[str, Any]:
         """Generate answer for a specific question"""
         try:
             assignment = await self.repository.get_question_assignment(
@@ -42,6 +42,8 @@ class UserService:
                 current_user.id, 
                 question_id
             )
+
+            # print("Assignment:", provider)
             
             self.validator.validate_assignment_exists(assignment)
             
@@ -69,14 +71,14 @@ class UserService:
                 provider
             )
             
-            version = self.business_logic.create_and_save_answer_version(
+            version = await self.business_logic.create_and_save_answer_version(
                 current_user.id, 
                 question_id, 
                 answer
             )
             
             self.business_logic.update_reviewer_answer(reviewer, answer)
-            self.db.commit()
+            await self.db.commit()
             
             return {
                 "question_id": question.id,
@@ -87,12 +89,13 @@ class UserService:
             }
         
         except Exception as e:
+            await self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
     
-    def get_answer_versions(self, current_user: User, question_id: int) -> Dict[str, Any]:
+    async def get_answer_versions(self, current_user: User, question_id: int) -> Dict[str, Any]:
         """Get all answer versions for a question"""
         try:
-            versions = self.repository.get_answer_versions(
+            versions = await self.repository.get_answer_versions(
                 self.db, 
                 current_user.id, 
                 question_id
@@ -112,26 +115,26 @@ class UserService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    def update_answer(self, current_user: User, question_id: int, new_answer: str) -> Dict[str, Any]:
+    async def update_answer(self, current_user: User, question_id: int, new_answer: str) -> Dict[str, Any]:
         """Update answer for a question"""
         try:
-            reviewer = self.repository.get_reviewer(self.db, current_user.id, question_id)
+            reviewer = await self.repository.get_reviewer(self.db, current_user.id, question_id)
             self.validator.validate_reviewer_exists(reviewer)
             
             if reviewer.ans:
-                version = self.business_logic.create_and_save_answer_version(
+                version = await self.business_logic.create_and_save_answer_version(
                     current_user.id,
                     reviewer.ques_id,
                     new_answer
                 )
                 
-                self.db.commit()
-                self.db.refresh(version)
+                await self.db.commit()
+                await self.db.refresh(version)
             
             self.business_logic.update_reviewer_answer(reviewer, new_answer)
             
-            self.db.commit()
-            self.db.refresh(reviewer)
+            await self.db.commit()
+            await self.db.refresh(reviewer)
             
             return {
                 "message": "Answer has been updated successfully.",
@@ -141,7 +144,7 @@ class UserService:
         except HTTPException:
             raise
         except Exception as e:
-            self.db.rollback()
+            await self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
       
     async def submit_answer(
@@ -191,7 +194,7 @@ class UserService:
         except HTTPException:
             raise
         except Exception as e:
-            self.db.rollback()
+            await self.db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
 
     async def check_user_status(self, current_user: User) -> Dict[str, Any]:

@@ -1,13 +1,7 @@
-import json
-from fastapi import HTTPException
-from app.core.llm_client import get_llm_client
-
-def questions_grouped_function(rfp_text: str, custom_message: str, provider: str):
+def questions_grouped_prompt(rfp_text: str, custom_message: str = None):
     """
     Generate questions using base RFP + admin custom instructions
     """
-
-    # 🔹 Step 1: Convert admin message → structured instruction
     custom_instruction = ""
 
     if custom_message and custom_message.strip():
@@ -23,8 +17,7 @@ def questions_grouped_function(rfp_text: str, custom_message: str, provider: str
         - Maintain RFP context while aligning with admin intent
         """
 
-    # 🔹 Step 2: Build NEW PROMPT (IMPORTANT)
-    prompt = f"""
+    return f"""
     You are an ADVANCED RFP QUESTION GENERATOR.
 
     Your job is to extract ONLY high-quality proposal questions.
@@ -69,18 +62,3 @@ def questions_grouped_function(rfp_text: str, custom_message: str, provider: str
     SOURCE RFP:
     \"\"\"{rfp_text}\"\"\"
     """
-
-    system_prompt = "Return ONLY valid JSON."
-
-    client = get_llm_client(provider)
-    content = client.complete(prompt=prompt, system=system_prompt)
-
-    content = content.strip().replace("```json", "").replace("```", "").strip()
-
-    try:
-        return json.loads(content)
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="AI returned invalid JSON in custom question generation"
-        )

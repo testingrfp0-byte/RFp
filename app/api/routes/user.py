@@ -26,7 +26,7 @@ async def generate_answers(
     question_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    provider: str = "openai"
+    provider: str = "gpt-4o-mini"
 ):
     try:
         service = UserService(db)
@@ -45,7 +45,7 @@ async def get_answer_versions(
 ):
     try:
         service = UserService(db)
-        return service.get_answer_versions(current_user, question_id)
+        return await service.get_answer_versions(current_user, question_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

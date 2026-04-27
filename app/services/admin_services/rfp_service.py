@@ -21,7 +21,7 @@ from app.services.llm_services.llm_service import (
     clean_extracted_text,
     delete_rfp_embeddings
 )
-from app.core.prompts.question_grouped_function import questions_grouped_function
+# from app.core.prompts.question_grouped_function import questions_grouped_function
 from app.config import pc, index, UPLOAD_FOLDER
 from app.core.serpapi.serpapi import search_with_serpapi
 from app.core.llm_client.openai import OpenAIEmbeddingClient

@@ -51,7 +51,7 @@ async def delete_keystone(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return delete_keystone_file(
+    return await delete_keystone_file(
         keystone_id=keystone_id,
         db=db,
         current_user=current_user
@@ -63,7 +63,7 @@ async def view_keystone(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return view_keystone_file(
+    return await view_keystone_file(
         keystone_id=keystone_id,
         db=db,
         current_user=current_user

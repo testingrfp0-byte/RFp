@@ -227,8 +227,17 @@ def answer_generation_prompt(mode_block, short_name, context, question):
         - NEVER begin the response with affirmations such as "OK", "Sure",
           "Certainly", "Of course", "Absolutely", or any similar opener.
           Begin directly with the substantive response content.
+        - Only give the final answer — do not include any preamble, analysis, or reasoning steps.
+        - If the question includes multiple parts, answer each part clearly and directly in sequence.  
 
         ----------------------------------------------------------------
+
+        ### CONTEXT USAGE RULE (MANDATORY)
+
+      - The context is for internal reasoning only.
+      - NEVER repeat, summarize, or restate the context.
+      - NEVER include any part of the context verbatim in the response.
+      - Only extract the necessary facts and use them to answer the question.
 
         Context:
         {context}

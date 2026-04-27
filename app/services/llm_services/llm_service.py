@@ -16,7 +16,15 @@ load_dotenv()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 from app.core.llm_client import get_llm_client
-from app.core.prompts import question_prompt,mode_block_prompt ,answer_generation_prompt, summary_and_analysis_prompt, summary_format_prompt, search_queries_prompt, generate_score_prompt, classification_prompt
+from app.core.prompts import (question_prompt,
+                              mode_block_prompt,
+                              answer_generation_prompt, 
+                              summary_and_analysis_prompt, 
+                              summary_format_prompt, 
+                              search_queries_prompt, 
+                              questions_grouped_prompt,
+                              generate_score_prompt, 
+                              classification_prompt)
 from app.core.llm_client.openai import OpenAIEmbeddingClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,6 +86,32 @@ def extract_company_background_from_rfp(rfp_text: str, provider: str) -> str:
     content = client.complete(prompt=prompt, system=system_prompt)
 
     return content
+
+def question_grouped_function(rfp_text: str, custom_instruction: str, provider: str) -> dict:
+    """
+    Generate high-quality proposal questions grouped by RFP section, based on:
+    1. The full RFP text
+    2. Custom instructions from the admin (if provided)
+
+    CUSTOM INSTRUCTION GUIDELINES:
+    - If admin provides specific instructions, use them to guide question generation.
+    - Tailor questions to align with admin's focus areas and priorities.
+    - If admin narrows scope, exclude irrelevant questions and focus on specified topics."""
+    
+    prompt = questions_grouped_prompt(rfp_text, custom_instruction)
+    system_prompt = "Return ONLY valid JSON."
+
+    client = get_llm_client(provider)
+    content = client.complete(prompt=prompt, system=system_prompt)
+
+    content = content.strip().replace("```json", "").replace("```", "").strip()
+    try:
+        return json.loads(content)
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="AI returned invalid JSON in custom question generation"
+        )
 
 async def summarize_results_with_llm(all_snippets: list, rfp_company_text: str, provider: str) -> str:
 
@@ -218,7 +252,7 @@ def generate_answer_with_context(
     short_name: str,
     existing_answer: str = None,
     edit_instruction: str = None,
-    provider: str = None
+    provider: str = "gpt-4o-mini"
 ) -> str:
     """
     Generate a new proposal response OR apply a targeted edit to an existing one.

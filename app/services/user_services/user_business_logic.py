@@ -112,17 +112,22 @@ class UserBusinessLogic:
 
     def generate_answer_for_question(self, question_text: str, enhanced_context: str, short_name: str, provider: str) -> str:
         """Generate and clean answer"""
-        answer = generate_answer_with_context(question_text, enhanced_context, short_name, provider)
+        answer = generate_answer_with_context(
+            question_text,
+            enhanced_context,
+            short_name,
+            provider=provider,
+        )
         return clean_answer(answer)
     
     def update_reviewer_answer(self, reviewer, answer: str):
         """Update reviewer answer"""
         reviewer.ans = answer
     
-    def create_and_save_answer_version(self, user_id: int, question_id: int, answer: str):
+    async def create_and_save_answer_version(self, user_id: int, question_id: int, answer: str):
         """Create and save answer version"""
-        version = self.repository.create_answer_version(self.db, user_id, question_id, answer)
-        self.db.commit()
+        version = await self.repository.create_answer_version(self.db, user_id, question_id, answer)
+        await self.db.commit()
         return version
     
     def update_submission_status(self, reviewer, status: str):

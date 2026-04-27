@@ -55,6 +55,8 @@ class UserRepository:
             answer=answer
         )
         db.add(version)
+        await db.commit()        
+        await db.refresh(version)
         return version
 
     @staticmethod
