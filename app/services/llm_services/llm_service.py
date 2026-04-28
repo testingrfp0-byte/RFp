@@ -87,7 +87,7 @@ def extract_company_background_from_rfp(rfp_text: str, provider: str) -> str:
 
     return content
 
-def question_grouped_function(rfp_text: str, custom_instruction: str, provider: str) -> dict:
+def questions_grouped_function(rfp_text: str, custom_instruction: str, provider: str) -> dict:
     """
     Generate high-quality proposal questions grouped by RFP section, based on:
     1. The full RFP text

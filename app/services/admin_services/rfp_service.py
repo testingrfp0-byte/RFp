@@ -14,7 +14,7 @@ from app.services.llm_services.llm_service import (
     extract_text_from_pdf,
     extract_company_background_from_rfp,
     # extract_questions_with_llm,
-    # questions_grouped_function,
+    questions_grouped_function,
     summarize_results_with_llm,
     generate_search_queries,
     parse_rfp_summary,
