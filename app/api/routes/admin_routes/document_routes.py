@@ -4,7 +4,7 @@ from typing import List
 from fastapi import (
     UploadFile, File, Form, Depends, HTTPException, APIRouter, status, Request)
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func
 from docx import Document
 from docx.shared import Inches
@@ -35,13 +35,29 @@ async def generate_rfp_doc(
             detail="Unauthorized"
         )
 
-    rfp_doc = await db.execute(
-        select(RFPDocument).filter(
+    # rfp_doc = await db.execute(
+    #     select(RFPDocument).filter(
+    #         RFPDocument.id == rfp_id,
+    #         RFPDocument.is_deleted == False
+    #     )
+    # )
+    # rfp_doc = rfp_doc.scalar()
+    rfp_doc_result = await db.execute(
+        select(RFPDocument)
+        .options(
+            selectinload(RFPDocument.questions)
+            .selectinload(RFPQuestion.reviewers),
+            selectinload(RFPDocument.questions)
+            .selectinload(RFPQuestion.answer_versions),
+            selectinload(RFPDocument.summary)
+        )
+        .where(
             RFPDocument.id == rfp_id,
             RFPDocument.is_deleted == False
         )
     )
-    rfp_doc = rfp_doc.scalar()
+
+    rfp_doc = rfp_doc_result.scalar_one_or_none()
 
     if not rfp_doc:
         raise HTTPException(status_code=404, detail="RFP not found")
@@ -162,8 +178,8 @@ async def generate_rfp_doc(
     )
 
     db.add(gen_doc)
-    db.commit()
-    db.refresh(gen_doc)
+    await db.commit()
+    await db.refresh(gen_doc)
 
     base_url = str(request.base_url).rstrip("/")
     download_url = f"{base_url}/documents/{gen_doc.id}/download"
