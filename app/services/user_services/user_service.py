@@ -161,14 +161,16 @@ class UserService:
             )
             self.validator.validate_reviewer_exists(reviewer)
 
-            latest_version = await self.db.execute(
-                select(ReviewerAnswerVersion)
+            result = await self.db.execute(
+            select(ReviewerAnswerVersion)
                 .filter(
                     ReviewerAnswerVersion.user_id == current_user.id,
                     ReviewerAnswerVersion.ques_id == question_id
                 )
                 .order_by(ReviewerAnswerVersion.generated_at.desc())
-            )
+                )
+
+            latest_version = result.scalars().first()
 
             if not latest_version:
                 raise HTTPException(
