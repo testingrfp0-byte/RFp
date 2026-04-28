@@ -218,7 +218,7 @@ async def upload_library_new(
     category: str = Form(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    provider: str = Form(...),
+    # provider: str = Form(...),
     custom_message: str = Form(None)
 ):
     if current_user.role.lower() != "admin":
@@ -228,7 +228,7 @@ async def upload_library_new(
         )
 
     try:
-        uploaded_docs = await upload_documents(files, project_name, category, current_user, db, provider,custom_message)
+        uploaded_docs = await upload_documents(files, project_name, category, current_user, db,custom_message)
         return {
             "message": f"{len(uploaded_docs)} file(s) uploaded successfully",
             "documents": uploaded_docs

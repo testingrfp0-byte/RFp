@@ -23,7 +23,7 @@ from app.core.llm_client.openai import OpenAIEmbeddingClient
 import re
 
 
-async def upload_documents(files, project_name, category, current_user, db: Session, provider: str,custom_message: str = None):
+async def upload_documents(files, project_name, category, current_user, db: Session,custom_message: str = None):
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     uploaded_docs = []
 
@@ -63,7 +63,7 @@ async def upload_documents(files, project_name, category, current_user, db: Sess
         if not text:
             continue
 
-        summary = generate_summary(text, provider)
+        summary = generate_summary(text)
         summary_vector = OpenAIEmbeddingClient().embed(summary)
         index.upsert(
             vectors=[(

@@ -36,7 +36,7 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENV = os.getenv("PINECONE_ENV", "us-east-1")
 PINECONE_INDEX = "devkb"      #os.getenv("PINECONE_INDEX", "devkb")
 # PINECONE_INDEX_RINGER = os.getenv("PINECONE_INDEX_RINGER", "ringerinfo")
-print(f"Pinecone API Key: {PINECONE_API_KEY}")
+# print(f"Pinecone API Key: {PINECONE_API_KEY}")
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
 if PINECONE_INDEX not in pc.list_indexes().names():
