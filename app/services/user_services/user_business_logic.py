@@ -110,9 +110,9 @@ class UserBusinessLogic:
 
         return enhanced_context, sources
 
-    def generate_answer_for_question(self, question_text: str, enhanced_context: str, short_name: str, provider: str) -> str:
+    async def generate_answer_for_question(self, question_text: str, enhanced_context: str, short_name: str, provider: str) -> str:
         """Generate and clean answer"""
-        answer = generate_answer_with_context(
+        answer = await generate_answer_with_context(
             question_text,
             enhanced_context,
             short_name,

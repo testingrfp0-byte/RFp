@@ -64,7 +64,7 @@ class UserService:
             # print(enhanced_context)
 
             
-            answer = self.business_logic.generate_answer_for_question(
+            answer = await self.business_logic.generate_answer_for_question(
                 question_text, 
                 enhanced_context, 
                 short_name,
