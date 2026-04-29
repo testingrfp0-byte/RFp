@@ -87,7 +87,7 @@ async def get_reviewers_by_file_service(file_id: int, db: AsyncSession):
             .join(RFPQuestion, Reviewer.ques_id == RFPQuestion.id)
             .join(User, Reviewer.user_id == User.id)
             .options(
-                selectinload(Reviewer.user)  # ✅ only relationship needs this
+                selectinload(Reviewer.user)  
             )
             .filter(RFPQuestion.rfp_id == file_id)
         )
@@ -96,9 +96,9 @@ async def get_reviewers_by_file_service(file_id: int, db: AsyncSession):
         output = [
             ReviewerOut(
                 ques_id=r.ques_id,
-                question=r.question,        # ✅ plain column, access directly
+                question=r.question,       
                 user_id=r.user_id,
-                username=r.user.username,   # ✅ safe via selectinload
+                username=r.user.username,   
                 status=r.status
             )
             for r in results
@@ -123,8 +123,8 @@ async def check_submissions_service(db: AsyncSession, current_user: User):
         reviewers = await db.execute(
             select(Reviewer)
             .options(
-                selectinload(Reviewer.user),                              # ✅ i.user.username
-                selectinload(Reviewer.question_ref).selectinload(RFPQuestion.rfp)  # ✅ i.question_ref.rfp.filename
+                selectinload(Reviewer.user),                             
+                selectinload(Reviewer.question_ref).selectinload(RFPQuestion.rfp) 
             )
         )
         reviewers = reviewers.scalars().all()
@@ -433,7 +433,7 @@ async def regenerate_answer_with_chat_service(request, db: AsyncSession):
     # Fetch RFP context — unpack tuple correctly.
     # get_similar_context() returns (context_text: str, sources: list).
     # ----------------------------------------------------------------
-    rfp_context, _ = get_similar_context(
+    rfp_context, _ = await get_similar_context(
         question.question_text,
         question.rfp_id,
         top_k=5

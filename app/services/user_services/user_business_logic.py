@@ -58,7 +58,7 @@ class UserBusinessLogic:
         1. Keystone XLS (PRIMARY source)
         2. RFP semantic context (SECONDARY source)
         """
-        rfp_context, sources = get_similar_context(
+        rfp_context, sources = await get_similar_context(
             question_text,
             rfp_id
         )

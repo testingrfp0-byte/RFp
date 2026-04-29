@@ -40,24 +40,21 @@ async def process_rfp_file(
     project_name: str,
     db: AsyncSession,
     current_user,
-    provider: str = "openai",
-    custom_message: str = None
+    provider: str = "gpt-4o-mini",
+    custom_message: str = None,
+    fallback_providers: list[str] = None
 ):
     timer = Timer()
 
     try:
-        # =========================
         # FILE READ
-        # =========================
         file_bytes = await file.read()
         timer.log("file_read")
 
         if not file_bytes:
             raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
-        # =========================
         # DUPLICATE CHECK
-        # =========================
         file_hash = hashlib.md5(file_bytes).hexdigest()
         existing_rfp = await db.execute(
             select(RFPDocument).filter(RFPDocument.file_hash == file_hash)
@@ -75,9 +72,7 @@ async def process_rfp_file(
             )
         timer.log("duplicate_check")
 
-        # =========================
         # SAVE FILE
-        # =========================
         timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         safe_original_name = os.path.basename(file.filename) if file.filename else "uploaded.pdf"
         dummy_filename = f"rfp_{timestamp}.pdf"
@@ -90,9 +85,7 @@ async def process_rfp_file(
 
         timer.log("file_save")
 
-        # =========================
         # TEXT EXTRACTION
-        # =========================
         rfp_text = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
         timer.log("pdf_extraction\n")
         # print("\nrfp_text lenth",len(rfp_text))
@@ -101,15 +94,11 @@ async def process_rfp_file(
         if not rfp_text.strip():
             raise HTTPException(status_code=422, detail="PDF has no readable text")
 
-        # =========================
         # CLEAN TEXT
-        # =========================
         rfp_text = clean_extracted_text(rfp_text)
         timer.log("text_cleaning")
 
-        # =========================
         # SAVE TO DB
-        # =========================
         new_rfp = RFPDocument(
             filename=safe_original_name,
             file_path=file_path,
@@ -140,9 +129,9 @@ async def process_rfp_file(
         # timer.log("company_extraction")
 
         search_queries, questions_grouped, company_rfp_text = await asyncio.gather(
-            asyncio.to_thread(generate_search_queries, rfp_text, provider),
-            asyncio.to_thread(questions_grouped_function, rfp_text,custom_message, provider),
-            asyncio.to_thread(extract_company_background_from_rfp, rfp_text,provider)
+            generate_search_queries(rfp_text, provider, fallback_providers),
+            questions_grouped_function(rfp_text, custom_message, provider, fallback_providers),
+            extract_company_background_from_rfp(rfp_text, provider, fallback_providers)
         )
 
         # Temporary debug
@@ -168,7 +157,8 @@ async def process_rfp_file(
         raw_summary = await summarize_results_with_llm(
             all_snippets,
             rfp_company_text=company_rfp_text,
-            provider=provider
+            provider=provider,
+            fallback_providers=fallback_providers,
         )
         timer.log("final_summary")
 
@@ -207,7 +197,7 @@ async def process_rfp_file(
             client = OpenAIEmbeddingClient()
             
             # Single API call for ALL chunks at once
-            embedding_vectors = client.embed(chunks)
+            embedding_vectors = await client.embed(chunks)
 
             # Build all vectors
             vectors = [
@@ -233,19 +223,14 @@ async def process_rfp_file(
 
         timer.log("embedding")
 
-        # =========================
-        # PRINT TIMINGS
-        # =========================
-        print("\n⏱️ TIMING BREAKDOWN:")
+
+        # print("\n⏱️ TIMING BREAKDOWN:")
         for k, v in timer.steps.items():
             print(f"{k}: {v} sec")
 
         total_time = timer.total()
         print(f"TOTAL TIME: {total_time} sec\n")
 
-        # =========================
-        # FINAL RESPONSE
-        # =========================
         return {
             "status": "new",
             "rfp_id": new_rfp.id,
@@ -345,12 +330,11 @@ async def restore_rfp_doc(rfp_id: int, db: AsyncSession, current_user):
                 detail="Only admins can restore docs."
             )
 
-        # ✅ removed .first() from inside execute()
         rfp_result = await db.execute(
             select(RFPDocument)
             .filter(RFPDocument.id == rfp_id, RFPDocument.is_deleted == True)
         )
-        rfp = rfp_result.scalars().first()  # ✅ scalars().first()
+        rfp = rfp_result.scalars().first()
 
         if rfp:
             rfp.is_deleted = False
@@ -358,7 +342,7 @@ async def restore_rfp_doc(rfp_id: int, db: AsyncSession, current_user):
             await db.commit()
             return {"message": "RFP restored successfully."}
 
-        # ✅ removed .first() from inside execute()
+
         gen_doc_result = await db.execute(
             select(GeneratedRFPDocument)
             .filter(
@@ -366,7 +350,7 @@ async def restore_rfp_doc(rfp_id: int, db: AsyncSession, current_user):
                 GeneratedRFPDocument.is_deleted == True
             )
         )
-        gen_doc = gen_doc_result.scalars().first()  # ✅ scalars().first()
+        gen_doc = gen_doc_result.scalars().first()  
 
         if gen_doc:
             gen_doc.is_deleted = False
@@ -374,7 +358,7 @@ async def restore_rfp_doc(rfp_id: int, db: AsyncSession, current_user):
             await db.commit()
             return {"message": "Generated document restored successfully."}
 
-        raise HTTPException(  # ✅ added proper 404 instead of silent success
+        raise HTTPException( 
             status_code=404,
             detail="Document not found in Trash."
         )
@@ -395,12 +379,11 @@ async def permanent_delete_rfp(rfp_id: int, db: AsyncSession, current_user):
                 detail="Only admins can permanently delete docs."
             )
 
-        # ✅ removed .first() from inside execute()
         rfp_result = await db.execute(
             select(RFPDocument)
             .filter(RFPDocument.id == rfp_id, RFPDocument.is_deleted == True)
         )
-        rfp = rfp_result.scalars().first()  # ✅ scalars().first()
+        rfp = rfp_result.scalars().first()
 
         if rfp:
             if rfp.file_path and os.path.exists(rfp.file_path):
@@ -408,12 +391,11 @@ async def permanent_delete_rfp(rfp_id: int, db: AsyncSession, current_user):
 
             delete_rfp_embeddings(rfp_id)
 
-            await db.delete(rfp)   # ✅ await db.delete()
+            await db.delete(rfp)   
             await db.commit()
 
             return {"message": "RFP permanently deleted."}
 
-        # ✅ removed .first() from inside execute()
         gen_doc_result = await db.execute(
             select(GeneratedRFPDocument)
             .filter(
@@ -421,13 +403,13 @@ async def permanent_delete_rfp(rfp_id: int, db: AsyncSession, current_user):
                 GeneratedRFPDocument.is_deleted == True
             )
         )
-        gen_doc = gen_doc_result.scalars().first()  # ✅ scalars().first()
+        gen_doc = gen_doc_result.scalars().first()
 
         if gen_doc:
             if gen_doc.file_path and os.path.exists(gen_doc.file_path):
                 os.remove(gen_doc.file_path)
 
-            await db.delete(gen_doc)  # ✅ await db.delete()
+            await db.delete(gen_doc)
             await db.commit()
 
             return {"message": "Generated document permanently deleted."}

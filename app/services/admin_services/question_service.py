@@ -15,13 +15,12 @@ async def filter_question_service(rfp_id: int, db: AsyncSession, current_user):
                 detail="Only admins can FILTER."
             )
 
-        # ✅ removed .first() from inside execute()
         rfp_result = await db.execute(
             select(RFPDocument)
             .options(joinedload(RFPDocument.questions))
             .filter(RFPDocument.id == rfp_id)
         )
-        rfp = rfp_result.scalars().first()  # ✅ scalars().first() not scalar()
+        rfp = rfp_result.scalars().first() 
 
         if not rfp:
             raise HTTPException(status_code=404, detail="RFP document not found")

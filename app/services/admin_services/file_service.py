@@ -63,8 +63,9 @@ async def upload_documents(files, project_name, category, current_user, db: Sess
         if not text:
             continue
 
-        summary = generate_summary(text)
-        summary_vector = OpenAIEmbeddingClient().embed(summary)
+        summary = await generate_summary(text)
+        embedding_client = OpenAIEmbeddingClient()
+        summary_vector = await embedding_client.embed(summary)
         index.upsert(
             vectors=[(
                 f"summary_{new_doc.id}",
@@ -88,7 +89,7 @@ async def upload_documents(files, project_name, category, current_user, db: Sess
 
         for i, chunk in enumerate(chunks):
             # vector = get_embedding(chunk)
-            vector = OpenAIEmbeddingClient().embed(chunk)
+            vector = await embedding_client.embed(chunk)
             vectors.append((
                 f"{new_doc.id}_{i}",
                 vector,
@@ -160,9 +161,10 @@ async def upload_background_document(file, project_name, category, current_user,
     await db.refresh(new_doc)
 
 
-    summary = generate_summary(extracted_text)
+    summary = await generate_summary(extracted_text)
     # summary_vector = get_embedding(summary)
-    summary_vector = OpenAIEmbeddingClient().embed(summary)
+    embedding_client = OpenAIEmbeddingClient()
+    summary_vector = await embedding_client.embed(summary)
     index.upsert(
         vectors=[(
             f"clint_background_summaries_{new_doc.id}",
@@ -184,7 +186,7 @@ async def upload_background_document(file, project_name, category, current_user,
     vectors = []
     for i, chunk in enumerate(chunks):
         # vector = get_embedding(chunk)
-        vector = OpenAIEmbeddingClient().embed(chunk)
+        vector = await embedding_client.embed(chunk)
         vectors.append((
             f"{new_doc.id}_{i}",
             vector,

@@ -35,7 +35,7 @@ async def search_related_summary(
             detail="Only admins can access summary docs."
         )
     
-    return await process_rfp_file(file, project_name, db, current_user, provider,custom_message)
+    return await process_rfp_file(file, project_name, db, current_user, provider, custom_message)
 
 @router.get("/filedetails", response_model=List[FileDetails])
 async def get_file_details(

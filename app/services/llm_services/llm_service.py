@@ -1,4 +1,5 @@
 import os,fitz,requests,re,math,docx,json,io,pytesseract,asyncio
+from typing import Optional
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
@@ -29,6 +30,41 @@ from app.core.llm_client.openai import OpenAIEmbeddingClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
+
+async def _complete_with_fallback(
+    provider: str,
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    fallback_providers: list[str] = None,
+) -> str:
+    """
+    Try primary model first, then fallback models in order.
+    """
+    all_providers = [provider] + (fallback_providers or ["gpt-4o-mini", "gpt-5.4"])
+    last_exception = None
+
+    for current_provider in all_providers:
+        try:
+            client = get_llm_client(current_provider)
+
+            if system_prompt is None:
+                return await client.complete(prompt=prompt)
+            else:
+                return await client.complete(
+                    prompt=prompt,
+                    system=system_prompt
+                )
+
+        except Exception as e:
+            last_exception = e
+            print(f"[WARNING] Provider '{current_provider}' failed: {e}. Trying next...")
+            continue
+
+    raise RuntimeError(
+        f"All providers failed. Last error: {last_exception}"
+    ) from last_exception
+
+
 def extract_text_from_pdf(pdf_file: bytes) -> str:
     text = ""
     with fitz.open(stream=pdf_file, filetype="pdf") as doc:
@@ -50,18 +86,25 @@ def extract_text_from_pdf(pdf_file: bytes) -> str:
     return text
 
 
-def generate_search_queries(rfp_text: str, provider: str) -> list:
+async def generate_search_queries(
+    rfp_text: str,
+    provider: str,
+    fallback_providers: list[str] = None
+) -> list:
     """
     Generate exactly 12 highly targeted Google search queries based on RFP text.
     """
     prompt = search_queries_prompt(rfp_text)
     system_prompt = "You generate Google search queries to build complete company profiles from RFPs."
 
-    client = get_llm_client(provider)
-    content = client.complete(prompt=prompt, system=system_prompt)
+    content = await _complete_with_fallback(provider, prompt, system_prompt, fallback_providers)
     return [line.strip(" -•") for line in content.split("\n") if line.strip()]
 
-def extract_company_background_from_rfp(rfp_text: str, provider: str) -> str:
+async def extract_company_background_from_rfp(
+    rfp_text: str,
+    provider: str,
+    fallback_providers: list[str] = None
+) -> str:
     """
     Extracts 3 fully detailed sections from an RFP:
     1. Purpose of the RFP (including Scope of Work, Buyer Priorities & Win Themes)
@@ -82,12 +125,16 @@ def extract_company_background_from_rfp(rfp_text: str, provider: str) -> str:
         "Your Section 3 extractions are especially thorough, capturing every single submission "
         "requirement. You work methodically through checklists to ensure nothing is overlooked."
     )
-    client = get_llm_client(provider)
-    content = client.complete(prompt=prompt, system=system_prompt)
+    content = await _complete_with_fallback(provider, prompt, system_prompt, fallback_providers)
 
     return content
 
-def questions_grouped_function(rfp_text: str, custom_instruction: str, provider: str) -> dict:
+async def questions_grouped_function(
+    rfp_text: str,
+    custom_instruction: str,
+    provider: str,
+    fallback_providers: list[str] = None
+) -> dict:
     """
     Generate high-quality proposal questions grouped by RFP section, based on:
     1. The full RFP text
@@ -101,8 +148,7 @@ def questions_grouped_function(rfp_text: str, custom_instruction: str, provider:
     prompt = questions_grouped_prompt(rfp_text, custom_instruction)
     system_prompt = "Return ONLY valid JSON."
 
-    client = get_llm_client(provider)
-    content = client.complete(prompt=prompt, system=system_prompt)
+    content = await _complete_with_fallback(provider, prompt, system_prompt, fallback_providers)
 
     content = content.strip().replace("```json", "").replace("```", "").strip()
     try:
@@ -113,7 +159,12 @@ def questions_grouped_function(rfp_text: str, custom_instruction: str, provider:
             detail="AI returned invalid JSON in custom question generation"
         )
 
-async def summarize_results_with_llm(all_snippets: list, rfp_company_text: str, provider: str) -> str:
+async def summarize_results_with_llm(
+    all_snippets: list,
+    rfp_company_text: str,
+    provider: str,
+    fallback_providers: list[str] = None,
+) -> str:
 
     combined_snippets = "\n".join(all_snippets)
     system_prompt = (
@@ -124,8 +175,12 @@ async def summarize_results_with_llm(all_snippets: list, rfp_company_text: str, 
 
     async def generate_section(section_num):
         prompt = summary_format_prompt(section_num, rfp_company_text, combined_snippets)
-        client = get_llm_client(provider)
-        return await asyncio.to_thread(lambda: client.complete(prompt=prompt, system=system_prompt))
+        return await _complete_with_fallback(
+            provider,
+            prompt,
+            system_prompt,
+            fallback_providers
+        )
 
     section1, section2, section3, section4 = await asyncio.gather(
         generate_section(1),
@@ -136,12 +191,15 @@ async def summarize_results_with_llm(all_snippets: list, rfp_company_text: str, 
 
     return f"{section1}\n\n---\n\n{section2}\n\n---\n\n{section3}\n\n---\n\n{section4}"
 
-def extract_questions_with_llm(classification_QaI_results: str, provider: str):
+async def extract_questions_with_llm(
+    classification_QaI_results: str,
+    provider: str,
+    fallback_providers: list[str] = None
+):
     
     prompt = question_prompt(classification_QaI_results)
     system_prompt = "Return ONLY strict valid JSON. No markdown. No commentary."
-    client = get_llm_client(provider)
-    content = client.complete(prompt=prompt, system=system_prompt)
+    content = await _complete_with_fallback(provider, prompt, system_prompt, fallback_providers)
     # print("Raw LLM output for question extraction:", content)
 
     content = content.strip()
@@ -176,7 +234,7 @@ def verify_password(plain_password, hashed_password):
 def hash_password(password):
     return pwd_context.hash(password)
 
-def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
+async def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
     """
     Retrieve RFP-specific chunks from Pinecone using file_id metadata filter.
     """
@@ -185,7 +243,7 @@ def get_similar_context(question: str, rfp_id: int, top_k: int = 5):
         #     input=[question],
         #     model="text-embedding-3-small"
         # ).data[0].embedding
-        embedding = OpenAIEmbeddingClient().embed(question)
+        embedding = await OpenAIEmbeddingClient().embed(question)
         
         results = index.query(
             vector=embedding,
@@ -246,13 +304,14 @@ def _sanitize_short_name(short_name: str) -> str:
     return name
 
 
-def generate_answer_with_context(
+async def generate_answer_with_context(
     question: str,
     context: str,
     short_name: str,
     existing_answer: str = None,
     edit_instruction: str = None,
-    provider: str = "gpt-4o-mini"
+    provider: str = "gpt-4o-mini",
+    # fallback_providers: list[str] = None
 ) -> str:
     """
     Generate a new proposal response OR apply a targeted edit to an existing one.
@@ -323,19 +382,22 @@ def generate_answer_with_context(
                 # "Make the generaed output responce answer in bullet points and every bullet points should have a blank line space between each bullet points "
             )
     try:
-        client = get_llm_client(provider)
-        content = client.complete(prompt=prompt, system=system_prompt)
+        content = await _complete_with_fallback(provider, prompt, system_prompt)
         return content
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM generation failed: {str(e)}")
 
-def analyze_answer_score_only(question_text: str, answer_text: str, provider: str = "openai") -> float:
+async def analyze_answer_score_only(
+    question_text: str,
+    answer_text: str,
+    provider: str = "openai",
+    # fallback_providers: list[str] = None
+) -> float:
     prompt = generate_score_prompt(question_text, answer_text)
 
     system_prompt = "You are a strict RFP evaluator who gives a numeric score based on how well the answer addresses the question. Return ONLY the numeric score as a float from 0.0 to 10.0, with no explanation or text."
-    client = get_llm_client(provider)
-    content = client.complete(prompt=prompt, system=system_prompt)
+    content = await _complete_with_fallback(provider, prompt, system_prompt)
     score_text = content.strip()
     try:
         return float(score_text)
@@ -411,12 +473,14 @@ def extract_text_from_file(file_path: str) -> str:
 
 
 
-def generate_summary(text: str, provider: str = "gpt-4o-mini") -> str:
+async def generate_summary(
+    text: str,
+    provider: str = "gpt-4o-mini",
+) -> str:
     """Generate summary of an RFP using LLM."""
     prompt = f"Summarize the following RFP in 3-5 paragraphs:\n\n{text[:8000]}"
-    client = get_llm_client(provider)
     system_prompt = "You are an RFP summarizer."
-    content = client.complete(prompt=prompt, system=system_prompt)
+    content = await _complete_with_fallback(provider, prompt, system_prompt)
     return content.strip()
 
 
@@ -541,7 +605,12 @@ def delete_rfp_embeddings(file_id: int):
         print(f"Error: {e}")
 
 
-def classification_QaI(rfp_text: str, selected_sections: list, provider) -> dict:
+def classification_QaI(
+    rfp_text: str,
+    selected_sections: list,
+    provider,
+    fallback_providers: list[str] = None
+) -> dict:
     """
     Classify RFP requirements into Instruction (I), Question (Q), or Both (B) using a 4-step decision tree.
     Returns structured JSON with classification results and summary statistics.
@@ -554,8 +623,7 @@ def classification_QaI(rfp_text: str, selected_sections: list, provider) -> dict
     #     "You ALWAYS identify the first main verb as the key signal for classification. "
     #     "Your output is a single JSON object with detailed classification results and summary statistics, following the exact structure specified in the prompt."
     # )
-    client = get_llm_client(provider)
-    content = client.complete(prompt=prompt)
+    content = _complete_with_fallback(provider, prompt, fallback_providers=fallback_providers)
     print("Raw LLM output for classification:", content)
 
     try:
