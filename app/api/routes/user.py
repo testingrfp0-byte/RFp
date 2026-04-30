@@ -7,6 +7,7 @@ from app.schemas.schema import UpdateAnswerRequest
 from app.services.user_services.user_service import UserService
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.rate_limiter import limiter
 router = APIRouter()
 
 @router.get("/assigned-questions")
@@ -22,6 +23,7 @@ async def get_assigned_questions(
 
 
 @router.get("/generate-answers/{question_id}")
+@limiter.limit("5/minute")
 async def generate_answers(
     question_id: int,
     db: AsyncSession = Depends(get_db),

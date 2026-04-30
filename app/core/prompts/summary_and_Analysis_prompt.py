@@ -44,7 +44,7 @@ Your task is to extract and reorganize information from the provided RFP text in
 - NO duplication of information
 
 ============================================================
-**⚠️ SCOPE OF WORK DECOMPOSITION RULE — CRITICAL, NEVER VIOLATE**
+** SCOPE OF WORK DECOMPOSITION RULE — CRITICAL, NEVER VIOLATE**
 ============================================================
 
 When the RFP contains a clearly enumerated list of deliverables, responsibilities,
@@ -57,7 +57,7 @@ scope items, or work areas — whether numbered (1, 2, 3...) or bulleted — you
 - Preserve the original numbering from the RFP (e.g., "1.", "2.", "3.")
 - If sub-bullets exist under a scope item, include ALL of them under that item
 
-**⚠️ SCOPE SOURCE RESTRICTION — CRITICAL:**
+** SCOPE SOURCE RESTRICTION — CRITICAL:**
 Extract scope items ONLY from the section explicitly labeled "Scope of Work," "Scope of Services,"
 "Deliverables," "Work Requirements," or a direct equivalent.
 DO NOT pull items from sections labeled "Priorities," "Goals," "Objectives," "Key Focus Areas,"
@@ -177,7 +177,7 @@ Extract 3-15 short verbatim quotes (5-30 words each) that reveal the buyer's voi
 
 ---
 
-**⚠️ EVALUATION CRITERIA EXTRACTION FOR DOWNSTREAM USE:**
+** EVALUATION CRITERIA EXTRACTION FOR DOWNSTREAM USE:**
 
 At the end of Section 1, add a clearly labeled sub-section:
 

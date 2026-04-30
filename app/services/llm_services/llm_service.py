@@ -18,14 +18,16 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 from app.core.llm_client import get_llm_client
 from app.core.prompts import (question_prompt,
-                              mode_block_prompt,
-                              answer_generation_prompt, 
+                            #   mode_block_prompt,
+                            #   answer_generation_prompt, 
                               summary_and_analysis_prompt, 
                               summary_format_prompt, 
                               search_queries_prompt, 
                               questions_grouped_prompt,
                               generate_score_prompt, 
-                              classification_prompt)
+                              classification_prompt,
+                              build_user_prompt,
+                              build_mode_block)
 from app.core.llm_client.openai import OpenAIEmbeddingClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -167,29 +169,22 @@ async def summarize_results_with_llm(
 ) -> str:
 
     combined_snippets = "\n".join(all_snippets)
+    prompt = summary_format_prompt(rfp_company_text, combined_snippets)
     system_prompt = (
         "You are a meticulous senior RFP analyst and strategy consultant who produces "
-        "structured analysis briefs. You extract and organize information with perfect accuracy, "
-        "never adding content not in the sources."
+        "structured four-section analysis briefs. You extract and organize information with "
+        "perfect accuracy, never adding content not in the sources. "
+        "You ALWAYS preserve Scope of Work items exactly as provided in the input — "
+        "never merging, renaming, or inventing them, and never pulling items from Priorities "
+        "or Goals sections into the Scope breakdown. "
+        "You ensure Section 3 captures every single submission requirement without exception. "
+        "You always produce all six sub-sections of Section 4 with sharp, specific, "
+        "evidence-based strategic analysis that gives a responding agency a clear roadmap "
+        "to win — never generic advice. "
+        "Your output is comprehensive, accurate, and properly formatted for any RFP document."
     )
-
-    async def generate_section(section_num):
-        prompt = summary_format_prompt(section_num, rfp_company_text, combined_snippets)
-        return await _complete_with_fallback(
-            provider,
-            prompt,
-            system_prompt,
-            fallback_providers
-        )
-
-    section1, section2, section3, section4 = await asyncio.gather(
-        generate_section(1),
-        generate_section(2),
-        generate_section(3),
-        generate_section(4),
-    )
-
-    return f"{section1}\n\n---\n\n{section2}\n\n---\n\n{section3}\n\n---\n\n{section4}"
+    content = await _complete_with_fallback(provider, prompt, system_prompt, fallback_providers)
+    return content
 
 async def extract_questions_with_llm(
     classification_QaI_results: str,
@@ -366,23 +361,94 @@ async def generate_answer_with_context(
     ) if formatting_signals else ""
 
 
-    mode_block = mode_block_prompt(is_edit_mode, existing_answer, edit_instruction, formatting_carry_forward)
-    prompt = answer_generation_prompt(question, context, short_name, mode_block)
-    system_prompt=(
-                "You are a professional RFP response specialist who strictly follows "
-                "behavioral authority, factual accuracy, and style rules. "
-                "You NEVER use document IDs, UUIDs, filenames, or alphanumeric reference "
-                "codes as client names — only the human-readable name explicitly provided. "
-                "In edit mode, you apply ONLY the requested change and preserve all other "
-                "existing content word for word. "
-                "You NEVER begin any response with 'OK', 'Sure', 'Certainly', 'Absolutely','here is the answer' "
-                "or any other affirmation — start directly with the answer. "
-                "You NEVER fabricate specific facts, figures, budgets, or case study details "
-                "not present in the provided context."
-                # "Make the generaed output responce answer in bullet points and every bullet points should have a blank line space between each bullet points "
-            )
+    # mode_block = mode_block_prompt(is_edit_mode, existing_answer, edit_instruction, formatting_carry_forward)
+    # prompt = answer_generation_prompt(question, context, short_name, mode_block)
+    mode_block = build_mode_block(
+        is_edit_mode=is_edit_mode,
+        existing_answer=existing_answer,
+        edit_instruction=edit_instruction,
+        formatting_carry_forward=formatting_carry_forward
+    )
+    prompt = build_user_prompt(
+        question=question,
+        context=context,
+        short_name=short_name,
+        mode_block=mode_block,
+        word_count = 250
+    )
+    SYSTEM_PROMPT = (
+        # ── IDENTITY ──────────────────────────────────────────────────────────────
+        "You are a senior proposal strategist and principal writer operating as the agency itself. "
+        "You are not an AI assistant helping someone write a proposal. "
+        "You ARE the agency — thinking, committing, and writing on its behalf. "
+        "Every response is a live deliverable submitted directly to a client. "
+        "Errors, hallucinations, and off-brand language carry direct commercial consequences. "
+
+        # ── VOICE ─────────────────────────────────────────────────────────────────
+        "Use 'we' and 'our' exclusively. "
+        "Never use 'I'. "
+        "Never refer to the agency in the third person. "
+
+        # ── CLIENT NAMING ─────────────────────────────────────────────────────────
+        "The client's canonical name will always be provided explicitly in the prompt. "
+        "Use that name and only that name throughout every response. "
+        "NEVER use a filename, UUID, document ID, or alphanumeric reference code as a client name — "
+        "strings like '24Ad8E0C', 'RFP-2024-001', or '24AA07' are document references, not names. "
+        "NEVER substitute 'the client' when a name has been provided. "
+
+        # ── CONTEXT — INTERNAL USE ONLY ───────────────────────────────────────────
+        "All context provided is for internal reasoning only. "
+        "NEVER repeat, quote, or paraphrase the context verbatim in any response. "
+        "NEVER reproduce section titles, headers, taglines, or boilerplate phrases word-for-word from the context. "
+        "Extract the underlying facts and express them in fresh, original agency voice. "
+        "If a sentence in your output could be traced to a direct copy from the context, rewrite it. "
+
+        # ── FACTUAL ACCURACY ──────────────────────────────────────────────────────
+        "Use ONLY information explicitly present in the provided context. "
+        "NEVER invent, infer, extrapolate, or assume facts not directly stated — "
+        "especially budgets, statistics, timelines, named projects, or case study outcomes. "
+        "If required information is missing, respond with exactly: "
+        "'Insufficient Information: We do not have enough detail in the available context "
+        "to accurately answer this question.' "
+        "It is always better to flag missing information than to fabricate a plausible-sounding answer. "
+
+        # ── KEYSTONE DATA ─────────────────────────────────────────────────────────
+        "If the context contains a 'Company Information' section, treat it as the authoritative "
+        "source for all factual company claims. "
+        "Incorporate these facts naturally into proposal language — never echo them verbatim "
+        "and never announce or reference the section itself. "
+
+        # ── EDIT MODE ─────────────────────────────────────────────────────────────
+        "In edit mode, apply ONLY the single change specified in the edit instruction. "
+        "Every sentence not explicitly targeted must be preserved verbatim — word for word. "
+        "Do not rewrite, improve, reorder, or expand any content outside the edit target. "
+        "Return the complete updated response, not just the edited portion. "
+        "Never use an edit instruction as an opportunity to silently improve unrelated sentences. "
+
+        # ── PRICING & DELIVERY ────────────────────────────────────────────────────
+        "The agency uses flat-rate pricing exclusively. "
+        "Never mention hourly rates, per-hour billing, or time-based pricing. "
+        "Services are delivered through subcontractors and external vendors — "
+        "never imply work is done solely by in-house full-time staff. "
+
+        # ── TONE & STYLE ──────────────────────────────────────────────────────────
+        "Write professionally, concisely, and confidently. "
+        "No vague marketing language. No generic AI phrasing such as 'delve', "
+        "'leverage synergies', 'it is worth noting', or 'in conclusion'. "
+        "Short, direct sentences. Active voice. No filler. No hedging. "
+
+        # ── FORMATTING ────────────────────────────────────────────────────────────
+        "Plain text only — no markdown bold, headers, or asterisks. "
+        "Do not use bullet points unless the RFP explicitly requires them or they are "
+        "carried forward from an existing answer in edit mode. "
+        "NEVER begin any response with affirmations such as 'OK', 'Sure', 'Certainly', "
+        "'Absolutely', 'Of course', 'Great question', 'Here is the answer', or any similar opener. "
+        "Begin every response directly with the substantive answer content. "
+        "Output the final answer only — no preamble, reasoning steps, or meta-commentary. "
+        "Do not reference 'context', 'question', 'prompt', or 'instructions' in any response."
+    )
     try:
-        content = await _complete_with_fallback(provider, prompt, system_prompt)
+        content = await _complete_with_fallback(provider, prompt, SYSTEM_PROMPT)
         return content
 
     except Exception as e:

@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import (
-    UploadFile, File, Form, Depends, HTTPException, APIRouter, status)
+    UploadFile, File, Form, Depends, HTTPException, APIRouter, status, Request)
 from collections import defaultdict
 from app.db.database import get_db
 from app.schemas.schema import (
@@ -17,10 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from starlette import status as http_status
+from app.core.rate_limiter import limiter
+
 router = APIRouter()
 
+# @Limiter.limit("2/minute")
 @router.post("/search-related-summary/")
+@limiter.limit("2/minute")
 async def search_related_summary(
+    request: Request,
     file: UploadFile = File(...),
     project_name: str = Form(...),
     db: AsyncSession = Depends(get_db),
@@ -54,7 +59,7 @@ async def get_file_details(
 @router.get("/rfpdetails/{document_id}/{rfp_status}", response_model=RFPDocumentGroupedQuestionsOut)
 async def get_rfp_details(
     document_id: int,
-    rfp_status: str,          # ✅ renamed from 'status' to avoid conflict
+    rfp_status: str,    
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -84,7 +89,7 @@ async def get_rfp_details(
             detail="RFP Document not found or access denied."
         )
 
-    # ✅ extract all values while session is still active
+
     doc_id = document.id
     doc_filename = document.filename
     doc_uploaded_at = document.uploaded_at
@@ -118,7 +123,7 @@ async def get_rfp_details(
     grouped_questions = [
         GroupedRFPQuestionOut(
             section=section,
-            questions=[QuestionOut(**q) for q in qs]  # ✅ fixed variable name (was shadowing `questions`)
+            questions=[QuestionOut(**q) for q in qs] 
         )
         for section, qs in grouped.items()
     ]
@@ -127,7 +132,7 @@ async def get_rfp_details(
         "id": doc_id,
         "filename": doc_filename,
         "uploaded_at": doc_uploaded_at,
-        "summary": doc_summary,          # ✅ already extracted above
+        "summary": doc_summary,         
         "questions_by_section": grouped_questions
     }
 

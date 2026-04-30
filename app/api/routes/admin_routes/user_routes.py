@@ -1,18 +1,23 @@
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.models.rfp_models import User
-from fastapi import Depends, APIRouter, Form
+from fastapi import Depends, APIRouter, Form, Request
 from app.api.routes.utils import get_current_user
 from app.services.admin_services import (
     get_all_users, get_assigned_users,
     get_user_by_id_service, check_submissions_service,
     get_assign_user_status_service, update_profile_service)
 from sqlalchemy.ext.asyncio import AsyncSession
+# from slowapi import Limiter
+from app.core.rate_limiter import limiter
 
 router = APIRouter()
 
+# @limiter.limit("2/minute")
+
 @router.get("/userdetails")
 async def get_user(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):

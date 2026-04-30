@@ -3,17 +3,23 @@ from app.api.routes import admin, auth, user
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from fastapi.staticfiles import StaticFiles
-from apscheduler.schedulers.asyncio import AsyncIOScheduler  # ✅ changed to async scheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timedelta
-from app.db.database import get_db, engine, Base              # ✅ import engine & Base
+from app.db.database import get_db, engine, Base        
 from app.models import RFPDocument
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-from sqlalchemy import select                                  # ✅ for async queries
+from sqlalchemy import select                                 
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.errors import RateLimitExceeded
+from app.core.rate_limiter import limiter
+
+
 
 app = FastAPI(title="RFP Generator")
+app.state.limiter = limiter
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class CacheControlMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
@@ -31,8 +38,11 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
         return response
+    
 
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(CacheControlMiddleware)
+
 
 
 @app.exception_handler(FastAPIHTTPException)
@@ -42,8 +52,15 @@ async def http_exception_handler(request: Request, exc: FastAPIHTTPException):
         content={"status": "error", "message": exc.detail}
     )
 
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"status": "error", "message": "Rate limit exceeded"}
+    )
 
-# ✅ Now fully async
+
+
 async def auto_delete_expired_rfps():
     async for db in get_db():
         try:
@@ -70,16 +87,16 @@ async def auto_delete_expired_rfps():
 
 
 def start_scheduler():
-    scheduler = AsyncIOScheduler()   # ✅ async-compatible scheduler
+    scheduler = AsyncIOScheduler() 
     scheduler.add_job(auto_delete_expired_rfps, 'interval', days=7)
     scheduler.start()
 
 
-# ✅ Changed to async startup — creates tables + starts scheduler
+
 @app.on_event("startup")
 async def startup_event():
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)   # ✅ replaces create_all(engine)
+        await conn.run_sync(Base.metadata.create_all)
     start_scheduler()
 
 
