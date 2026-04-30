@@ -1,4 +1,4 @@
-from fastapi import APIRouter,Depends, Form
+from fastapi import APIRouter,Depends, Form, Request
 from sqlalchemy.orm import Session
 from app.models.rfp_models import User
 from app.db.database import get_db
@@ -25,6 +25,7 @@ async def get_assigned_questions(
 @router.get("/generate-answers/{question_id}")
 @limiter.limit("5/minute")
 async def generate_answers(
+    request: Request,
     question_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
