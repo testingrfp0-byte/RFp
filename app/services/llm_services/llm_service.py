@@ -457,7 +457,7 @@ async def generate_answer_with_context(
 async def analyze_answer_score_only(
     question_text: str,
     answer_text: str,
-    provider: str = "openai",
+    provider: str = "gpt-4o-mini",
     # fallback_providers: list[str] = None
 ) -> float:
     prompt = generate_score_prompt(question_text, answer_text)
@@ -465,6 +465,7 @@ async def analyze_answer_score_only(
     system_prompt = "You are a strict RFP evaluator who gives a numeric score based on how well the answer addresses the question. Return ONLY the numeric score as a float from 0.0 to 10.0, with no explanation or text."
     content = await _complete_with_fallback(provider, prompt, system_prompt)
     score_text = content.strip()
+    # print(type(score_text), score_text)
     try:
         return float(score_text)
     except ValueError:

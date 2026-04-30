@@ -13,7 +13,7 @@ class UserRepository:
         result = await db.execute(
             select(RFPQuestion, Reviewer)
             .join(Reviewer, RFPQuestion.id == Reviewer.ques_id)
-            .options(selectinload(RFPQuestion.rfp))  # ✅ important
+            .options(selectinload(RFPQuestion.rfp))  
             .filter(Reviewer.user_id == user_id)
             .order_by(RFPQuestion.id.asc())
         )

@@ -271,7 +271,10 @@ async def remove_user_service(ques_id: int, user_id: int, db: AsyncSession, curr
                 """,
                 subtype=MessageType.plain
             )
-            await fm.send_message(message)
+            try:
+                await fm.send_message(message)
+            except Exception as e:
+                print("Email failed:", e)
 
         return {"message": "Reviewer user removed and notified successfully."}
 

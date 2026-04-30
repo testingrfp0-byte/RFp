@@ -121,7 +121,7 @@ async def analyze_single(
 ):
     try:
         service = UserService(db)
-        return service.analyze_question(rfp_id, question_id, current_user)
+        return await service.analyze_question(rfp_id, question_id, current_user)
     except HTTPException:
         raise
     except Exception as e:

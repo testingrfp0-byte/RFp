@@ -154,6 +154,7 @@ class UserService:
             status: str) -> Dict[str, Any]:
         try:
             self.validator.validate_submission_status(status)
+            normalized_status = status.strip().lower()
             reviewer = await self.repository.get_reviewer(
                 self.db,
                 current_user.id,
@@ -161,36 +162,42 @@ class UserService:
             )
             self.validator.validate_reviewer_exists(reviewer)
 
-            result = await self.db.execute(
-            select(ReviewerAnswerVersion)
-                .filter(
-                    ReviewerAnswerVersion.user_id == current_user.id,
-                    ReviewerAnswerVersion.ques_id == question_id
-                )
-                .order_by(ReviewerAnswerVersion.generated_at.desc())
-                )
-
-            latest_version = result.scalars().first()
-
-            if not latest_version:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No generated answer found. Please generate an answer first."
+            if normalized_status == "submitted":
+                result = await self.db.execute(
+                    select(ReviewerAnswerVersion)
+                    .filter(
+                        ReviewerAnswerVersion.user_id == current_user.id,
+                        ReviewerAnswerVersion.ques_id == question_id
+                    )
+                    .order_by(ReviewerAnswerVersion.generated_at.desc())
                 )
 
-            reviewer.ans = latest_version.answer
+                latest_version = result.scalars().first()
 
-            reviewer.submit_status = "submitted"
-            reviewer.status = "pending"
-            reviewer.submitted_at = datetime.utcnow()
+                if not latest_version:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="No generated answer found. Please generate an answer first."
+                    )
+
+                reviewer.ans = latest_version.answer
+                reviewer.submit_status = "submitted"
+                reviewer.status = "pending"
+                reviewer.submitted_at = datetime.utcnow()
+            else:
+                # Keep question visible in user's assigned list.
+                reviewer.submit_status = normalized_status
+                reviewer.status = "rejected"
+                reviewer.submitted_at = None
+                reviewer.ans = None 
 
             await self.db.commit()
 
             return {
-                "message": "Submission successful",
+                "message": "Status updated successfully",
                 "question_id": question_id,
                 "submit_status": reviewer.submit_status,
-                "submitted_at": reviewer.submitted_at.isoformat()
+                "submitted_at": reviewer.submitted_at.isoformat() if reviewer.submitted_at else None
             }
 
         except HTTPException:
@@ -251,7 +258,7 @@ class UserService:
             reviewer_answer = await self.repository.get_reviewer(self.db, current_user.id, question_id)
             answer_text = reviewer_answer.ans if reviewer_answer and reviewer_answer.ans else ""
             
-            score = self.business_logic.calculate_answer_score(
+            score = await self.business_logic.calculate_answer_score(
                 question.question_text,
                 answer_text
             )

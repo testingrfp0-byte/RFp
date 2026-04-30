@@ -174,9 +174,9 @@ class UserBusinessLogic:
         
         return filtered_questions
     
-    def calculate_answer_score(self, question_text: str, answer_text: str) -> float:
+    async def calculate_answer_score(self, question_text: str, answer_text: str) -> float:
         """Calculate score for an answer"""
-        return analyze_answer_score_only(
+        return await analyze_answer_score_only(
             question_text=question_text,
             answer_text=answer_text
         )
