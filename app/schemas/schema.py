@@ -131,6 +131,7 @@ class ChatInputRequest(BaseModel):
     user_id: int
     ques_id: int
     chat_message: str
+    provider: Optional[str] = None
 
 class UpdateAnswerRequest(BaseModel):
     answer: str

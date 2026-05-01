@@ -1,7 +1,6 @@
 from openai import OpenAI
 from .base import BaseLLMClient, LLMResponse
 from app.config import OPENAI_API_KEY
-from typing import List
 from openai import AsyncOpenAI
 from .base import BaseLLMClient
 from app.config import OPENAI_API_KEY

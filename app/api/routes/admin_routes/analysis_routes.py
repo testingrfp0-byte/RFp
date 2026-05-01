@@ -1,10 +1,12 @@
-from fastapi import Depends, HTTPException, APIRouter
+from fastapi import Depends, HTTPException, APIRouter, Request
 from app.db.database import get_db
 from app.schemas.schema import AdminEditRequest, ChatInputRequest
 from app.models.rfp_models import User
 from app.api.routes.utils import get_current_user
 from app.services.admin_services import (admin_filter_questions_by_status_service,analyze_overall_score_service,edit_question_by_admin_service,regenerate_answer_with_chat_service)
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.rate_limiter import limiter
+
 router = APIRouter()
 
 @router.get("/admin/filter-questions-by-user/{status}")
@@ -16,7 +18,9 @@ async def admin_filter_questions_by_status(
     return await admin_filter_questions_by_status_service(status, db, current_user)
 
 @router.post("/admin/analyze-answers")
+@limiter.limit("2/minute")
 async def analyze_overall_score_only_if_complete(
+    request: Request,
     rfp_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -46,12 +50,14 @@ async def edit_question_by_admin(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/questions/chat_input")
+@limiter.limit("5/minute") 
 async def regenerate_answer_with_chat(
-    request: ChatInputRequest,
+    request: Request,
+    chat_prompt: ChatInputRequest,
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await regenerate_answer_with_chat_service(request, db)
+        return await regenerate_answer_with_chat_service(chat_prompt, db)
     except HTTPException as http_exc:
         raise http_exc
     except Exception as e:

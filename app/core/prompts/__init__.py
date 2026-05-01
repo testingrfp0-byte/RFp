@@ -6,3 +6,4 @@ from app.core.prompts.search_queries_prompt import search_queries_prompt
 from app.core.prompts.analyze_ans_score import generate_score_prompt
 from app.core.prompts.classification_prompt import classification_prompt
 from app.core.prompts.question_grouped_prompt import questions_grouped_prompt
+from app.core.prompts.regenerate_answer_prompt import regenerate_answer_prompt
